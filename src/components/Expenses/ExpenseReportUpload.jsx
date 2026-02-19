@@ -217,7 +217,7 @@ export default function ExpenseReportUpload({ properties, onImport, onClose }) {
             type: tx.type || '',
             cashIn: tx.cashIn || 0,
             cashOut: tx.cashOut || 0,
-            selected: tx.isExpense && !tx.isDistribution, // default: select expenses
+            selected: !tx.isDistribution, // default: select both expenses and income (not distributions)
           };
         });
 
