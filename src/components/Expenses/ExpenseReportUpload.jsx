@@ -146,6 +146,7 @@ export default function ExpenseReportUpload({ properties, onImport, onClose }) {
   const [importing, setImporting] = useState(false);
   const [viewFilter, setViewFilter] = useState('expenses'); // expenses | income | all
   const [expandedProps, setExpandedProps] = useState(new Set());
+  const [uploadedFile, setUploadedFile] = useState(null);
   const fileInputRef = useRef(null);
 
   // Match a transaction's propertyAddress to an existing property
@@ -238,6 +239,7 @@ export default function ExpenseReportUpload({ properties, onImport, onClose }) {
 
     // PDF handling
     if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+      setUploadedFile(file);
       await handlePdfUpload(file);
       return;
     }
@@ -362,7 +364,7 @@ export default function ExpenseReportUpload({ properties, onImport, onClose }) {
       };
     });
 
-    await onImport(expenses);
+    await onImport(expenses, uploadedFile);
     setImporting(false);
     setStep('done');
   };

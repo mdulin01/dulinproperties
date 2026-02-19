@@ -1,16 +1,20 @@
-import React, { useState, useMemo } from 'react';
-import { Search, Plus, ChevronDown, ChevronUp, DollarSign } from 'lucide-react';
+import React, { useState, useMemo, useCallback } from 'react';
+import { Search, Plus, ChevronDown, ChevronUp, DollarSign, CheckSquare, Square, X, Trash2 } from 'lucide-react';
 import { rentStatuses } from '../../constants';
 import { formatDate, formatCurrency } from '../../utils';
 import { getPropertyTenants } from '../../hooks/useProperties';
 
-export default function RentLedger({ rentPayments, properties, onAdd, onEdit, onDelete, showToast }) {
+export default function RentLedger({ rentPayments, properties, onAdd, onEdit, onDelete, onBulkDelete, showToast }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [propertyFilter, setPropertyFilter] = useState('all');
   const [yearFilter, setYearFilter] = useState('all');
   const [sortCol, setSortCol] = useState('date');
   const [sortDir, setSortDir] = useState('desc');
+
+  // Multi-select state
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
 
   // Get property/tenant name helpers
   const getPropertyName = (propertyId) => {
@@ -87,6 +91,41 @@ export default function RentLedger({ rentPayments, properties, onAdd, onEdit, on
       : <ChevronDown className="w-3 h-3 text-emerald-400 inline ml-1" />;
   };
 
+  // Multi-select helpers
+  const toggleSelect = useCallback((id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAll = useCallback(() => {
+    setSelectedIds(new Set(sorted.map(r => r.id)));
+  }, [sorted]);
+
+  const deselectAll = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleBulkDelete = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    if (onBulkDelete) {
+      onBulkDelete([...selectedIds]);
+    }
+    exitSelectMode();
+  }, [selectedIds, onBulkDelete, exitSelectMode]);
+
+  const selectedTotal = useMemo(() => {
+    return sorted.filter(r => selectedIds.has(r.id)).reduce((sum, r) => sum + (r.amount || 0), 0);
+  }, [sorted, selectedIds]);
+
   const getStatusBadge = (status) => {
     const s = rentStatuses.find(rs => rs.value === status);
     if (!s) return <span className="text-xs text-white/40">{status}</span>;
@@ -113,13 +152,52 @@ export default function RentLedger({ rentPayments, properties, onAdd, onEdit, on
           <h2 className="text-xl font-bold text-white">Rent</h2>
           <p className="text-xs text-white/40">{rentPayments.length} payment records</p>
         </div>
-        <button
-          onClick={onAdd}
-          className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500 text-white rounded-xl text-sm font-medium hover:bg-emerald-600 transition"
-        >
-          <Plus className="w-4 h-4" /> Record Payment
-        </button>
+        <div className="flex items-center gap-2">
+          {!selectMode && sorted.length > 0 && (
+            <button
+              onClick={() => setSelectMode(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-white/10 text-white/70 rounded-xl text-sm font-medium hover:bg-white/20 transition"
+            >
+              <CheckSquare className="w-4 h-4" /> Select
+            </button>
+          )}
+          <button
+            onClick={onAdd}
+            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500 text-white rounded-xl text-sm font-medium hover:bg-emerald-600 transition"
+          >
+            <Plus className="w-4 h-4" /> Record Payment
+          </button>
+        </div>
       </div>
+
+      {/* Bulk action bar */}
+      {selectMode && (
+        <div className="flex items-center justify-between gap-3 mb-4 px-4 py-3 bg-blue-500/10 border border-blue-500/20 rounded-2xl">
+          <div className="flex items-center gap-3">
+            <button onClick={exitSelectMode} className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20">
+              <X className="w-4 h-4 text-white/60" />
+            </button>
+            <span className="text-sm text-white font-medium">
+              {selectedIds.size} selected {selectedIds.size > 0 && <span className="text-emerald-400">({formatCurrency(selectedTotal)})</span>}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={selectedIds.size === sorted.length ? deselectAll : selectAll}
+              className="px-3 py-1.5 text-xs font-medium text-white/60 bg-white/10 rounded-lg hover:bg-white/20 transition"
+            >
+              {selectedIds.size === sorted.length ? 'Deselect All' : 'Select All'}
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              disabled={selectedIds.size === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-400 bg-red-500/10 rounded-lg hover:bg-red-500/20 transition disabled:opacity-30"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Delete ({selectedIds.size})
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Summary tiles */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
@@ -197,6 +275,15 @@ export default function RentLedger({ rentPayments, properties, onAdd, onEdit, on
             <table className="w-full">
               <thead>
                 <tr className="border-b border-white/[0.08]">
+                  {selectMode && (
+                    <th className="w-10 px-3 py-3">
+                      <button onClick={selectedIds.size === sorted.length ? deselectAll : selectAll}>
+                        {selectedIds.size === sorted.length
+                          ? <CheckSquare className="w-4 h-4 text-blue-400" />
+                          : <Square className="w-4 h-4 text-white/30" />}
+                      </button>
+                    </th>
+                  )}
                   <th className="text-left px-4 py-3 text-xs font-semibold text-white/40 uppercase tracking-wide cursor-pointer hover:text-white/60" onClick={() => handleSort('date')}>
                     Date Paid <SortIcon col="date" />
                   </th>
@@ -215,27 +302,37 @@ export default function RentLedger({ rentPayments, properties, onAdd, onEdit, on
                 </tr>
               </thead>
               <tbody>
-                {sorted.map(payment => (
-                  <tr
-                    key={payment.id}
-                    className="border-b border-white/[0.05] hover:bg-white/[0.03] transition cursor-pointer"
-                    onClick={() => onEdit(payment)}
-                  >
-                    <td className="px-4 py-3">
-                      <span className="text-sm font-medium text-white">{payment.datePaid ? formatDate(payment.datePaid) : '—'}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm text-white/70">{payment.tenantName || '—'}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm text-white/70">{payment.propertyName || '—'}</span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="text-sm font-medium text-emerald-400">{formatCurrency(payment.amount || 0)}</span>
-                    </td>
-                    <td className="px-4 py-3">{getStatusBadge(payment.status)}</td>
-                  </tr>
-                ))}
+                {sorted.map(payment => {
+                  const isSelected = selectedIds.has(payment.id);
+                  return (
+                    <tr
+                      key={payment.id}
+                      className={`border-b border-white/[0.05] hover:bg-white/[0.03] transition cursor-pointer ${isSelected ? 'bg-blue-500/[0.08]' : ''}`}
+                      onClick={() => selectMode ? toggleSelect(payment.id) : onEdit(payment)}
+                    >
+                      {selectMode && (
+                        <td className="w-10 px-3 py-3">
+                          {isSelected
+                            ? <CheckSquare className="w-4 h-4 text-blue-400" />
+                            : <Square className="w-4 h-4 text-white/20" />}
+                        </td>
+                      )}
+                      <td className="px-4 py-3">
+                        <span className="text-sm font-medium text-white">{payment.datePaid ? formatDate(payment.datePaid) : '—'}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-sm text-white/70">{payment.tenantName || '—'}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-sm text-white/70">{payment.propertyName || '—'}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className="text-sm font-medium text-emerald-400">{formatCurrency(payment.amount || 0)}</span>
+                      </td>
+                      <td className="px-4 py-3">{getStatusBadge(payment.status)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

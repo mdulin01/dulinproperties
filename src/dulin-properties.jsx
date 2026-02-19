@@ -182,7 +182,7 @@ export default function DulinProperties() {
   const {
     rentPayments, setRentPayments,
     showAddRentModal, setShowAddRentModal,
-    addRentPayment, updateRentPayment, deleteRentPayment,
+    addRentPayment, updateRentPayment, deleteRentPayment, bulkDeleteRentPayments,
   } = rentHook;
 
   // Pass db directly — hook saves to Firestore internally, no ref indirection
@@ -1182,6 +1182,13 @@ export default function DulinProperties() {
                       onConfirm: () => { deleteRentPayment(paymentId); setConfirmDialog(null); },
                     });
                   }}
+                  onBulkDelete={(ids) => {
+                    setConfirmDialog({
+                      title: 'Delete Payments',
+                      message: `Delete ${ids.length} selected rent payment${ids.length > 1 ? 's' : ''}?`,
+                      onConfirm: () => { bulkDeleteRentPayments(ids); setConfirmDialog(null); },
+                    });
+                  }}
                   showToast={showToast}
                 />
               )}
@@ -1689,12 +1696,60 @@ export default function DulinProperties() {
         {showExpenseReportUpload && (
           <ExpenseReportUpload
             properties={properties}
-            onImport={async (expenseItems) => {
+            onImport={async (items, file) => {
+              const incomeItems = items.filter(i => i.flowType === 'income');
+              const expenseItems = items.filter(i => i.flowType !== 'income');
+
+              // Route expenses → Expenses section
               for (const item of expenseItems) {
                 addExpense({ ...item, id: Date.now().toString() + Math.random().toString(36).slice(2, 6), createdAt: new Date().toISOString(), createdBy: currentUser });
-                await new Promise(r => setTimeout(r, 50)); // small delay to avoid id collisions
+                await new Promise(r => setTimeout(r, 50));
               }
-              showToast(`Imported ${expenseItems.length} expenses`, 'success');
+
+              // Route income → Rent section
+              for (const item of incomeItems) {
+                const month = item.date ? item.date.substring(0, 7) : item.reportMonth || '';
+                addRentPayment({
+                  id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+                  propertyId: item.propertyId || '',
+                  propertyName: item.propertyName || '',
+                  tenantName: item.vendor || '',
+                  month,
+                  amount: item.amount || 0,
+                  datePaid: item.date || '',
+                  status: 'paid',
+                  notes: item.notes || `Imported from owner packet (${item.reportMonth || ''})`,
+                  createdAt: new Date().toISOString(),
+                  createdBy: currentUser,
+                });
+                await new Promise(r => setTimeout(r, 50));
+              }
+
+              // Auto-store uploaded PDF in Documents
+              if (file) {
+                try {
+                  const fileUrl = await uploadPhoto(file, 'rentals/documents');
+                  const reportMonth = items[0]?.reportMonth || new Date().toISOString().substring(0, 7);
+                  addDocument({
+                    id: Date.now().toString(),
+                    title: file.name || 'Owner Packet',
+                    type: 'other',
+                    fileName: file.name || 'document.pdf',
+                    fileUrl,
+                    date: reportMonth + '-01',
+                    notes: 'Auto-saved from owner packet import',
+                    createdAt: new Date().toISOString(),
+                    createdBy: currentUser,
+                  });
+                } catch (err) {
+                  console.error('Failed to auto-save PDF to documents:', err);
+                }
+              }
+
+              const parts = [];
+              if (expenseItems.length) parts.push(`${expenseItems.length} expense${expenseItems.length > 1 ? 's' : ''}`);
+              if (incomeItems.length) parts.push(`${incomeItems.length} rent payment${incomeItems.length > 1 ? 's' : ''}`);
+              showToast(`Imported ${parts.join(' and ')}${file ? ' (PDF saved to Documents)' : ''}`, 'success');
             }}
             onClose={() => setShowExpenseReportUpload(false)}
           />

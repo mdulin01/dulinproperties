@@ -42,12 +42,23 @@ export const useRent = (currentUser, saveRef, showToast) => {
     showToast('Payment deleted', 'info');
   }, [showToast]);
 
+  const bulkDeleteRentPayments = useCallback((ids) => {
+    const idSet = new Set(ids);
+    setRentPayments(prev => {
+      const updated = prev.filter(r => !idSet.has(r.id));
+      saveRef.current(updated);
+      return updated;
+    });
+    showToast(`${ids.length} payments deleted`, 'info');
+  }, [showToast]);
+
   return {
     rentPayments,
     showAddRentModal,
     addRentPayment,
     updateRentPayment,
     deleteRentPayment,
+    bulkDeleteRentPayments,
     setShowAddRentModal,
     setRentPayments,
   };
