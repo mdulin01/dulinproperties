@@ -249,16 +249,17 @@ export default function DulinProperties() {
   const hubDataLoadedRef = useRef(false);
 
   const saveSharedHub = useCallback(async (newLists, newTasks, newIdeas) => {
-    if (!user) return;
-    if (!hubDataLoadedRef.current) return;
+    if (!user) { console.warn('[hub] save skipped: no user'); return; }
+    if (!hubDataLoadedRef.current) { console.warn('[hub] save skipped: data not loaded yet'); return; }
     try {
       const updates = { lastUpdated: new Date().toISOString(), updatedBy: currentUser };
-      if (newLists !== null && newLists !== undefined) updates.lists = newLists;
-      if (newTasks !== null && newTasks !== undefined) updates.tasks = newTasks;
-      if (newIdeas !== null && newIdeas !== undefined) updates.ideas = newIdeas;
+      if (newLists !== null && newLists !== undefined) updates.lists = sanitizeForFirestore(newLists);
+      if (newTasks !== null && newTasks !== undefined) updates.tasks = sanitizeForFirestore(newTasks);
+      if (newIdeas !== null && newIdeas !== undefined) updates.ideas = sanitizeForFirestore(newIdeas);
       await setDoc(doc(db, 'rentalData', 'sharedHub'), updates, { merge: true });
+      console.log('[hub] save SUCCESS');
     } catch (error) {
-      console.error('Error saving shared hub:', error);
+      console.error('[hub] save FAILED:', error);
       showToast('Failed to save. Please try again.', 'error');
     }
   }, [user, currentUser, showToast]);
@@ -266,15 +267,18 @@ export default function DulinProperties() {
   useEffect(() => { saveSharedHubRef.current = saveSharedHub; }, [saveSharedHub]);
 
   const savePropertiesToFirestore = useCallback(async (newProperties) => {
-    if (!user) return;
+    if (!user) { console.warn('[properties] save skipped: no user'); return; }
     try {
+      const clean = sanitizeForFirestore(newProperties);
+      console.log('[properties] saving', clean.length, 'properties to Firestore');
       await setDoc(doc(db, 'rentalData', 'properties'), {
-        properties: newProperties,
+        properties: clean,
         lastUpdated: new Date().toISOString(),
         updatedBy: currentUser
       }, { merge: true });
+      console.log('[properties] save SUCCESS');
     } catch (error) {
-      console.error('Error saving properties:', error);
+      console.error('[properties] save FAILED:', error);
       showToast('Failed to save property data.', 'error');
     }
   }, [user, currentUser, showToast]);
@@ -282,15 +286,18 @@ export default function DulinProperties() {
   useEffect(() => { savePropertiesRef.current = savePropertiesToFirestore; }, [savePropertiesToFirestore]);
 
   const saveDocumentsToFirestore = useCallback(async (newDocuments) => {
-    if (!user) return;
+    if (!user) { console.warn('[documents] save skipped: no user'); return; }
     try {
+      const clean = sanitizeForFirestore(newDocuments);
+      console.log('[documents] saving', clean.length, 'documents to Firestore');
       await setDoc(doc(db, 'rentalData', 'documents'), {
-        documents: newDocuments,
+        documents: clean,
         lastUpdated: new Date().toISOString(),
         updatedBy: currentUser
       }, { merge: true });
+      console.log('[documents] save SUCCESS');
     } catch (error) {
-      console.error('Error saving documents:', error);
+      console.error('[documents] save FAILED:', error);
       showToast('Failed to save document data.', 'error');
     }
   }, [user, currentUser, showToast]);
@@ -298,15 +305,18 @@ export default function DulinProperties() {
   useEffect(() => { saveDocumentsRef.current = saveDocumentsToFirestore; }, [saveDocumentsToFirestore]);
 
   const saveFinancialsToFirestore = useCallback(async (newTransactions) => {
-    if (!user) return;
+    if (!user) { console.warn('[financials] save skipped: no user'); return; }
     try {
+      const clean = sanitizeForFirestore(newTransactions);
+      console.log('[financials] saving', clean.length, 'transactions to Firestore');
       await setDoc(doc(db, 'rentalData', 'financials'), {
-        transactions: newTransactions,
+        transactions: clean,
         lastUpdated: new Date().toISOString(),
         updatedBy: currentUser
       }, { merge: true });
+      console.log('[financials] save SUCCESS');
     } catch (error) {
-      console.error('Error saving financials:', error);
+      console.error('[financials] save FAILED:', error);
       showToast('Failed to save financial data.', 'error');
     }
   }, [user, currentUser, showToast]);
@@ -314,15 +324,18 @@ export default function DulinProperties() {
   useEffect(() => { saveFinancialsRef.current = saveFinancialsToFirestore; }, [saveFinancialsToFirestore]);
 
   const saveRentToFirestore = useCallback(async (newRentPayments) => {
-    if (!user) return;
+    if (!user) { console.warn('[rent] save skipped: no user'); return; }
     try {
+      const clean = sanitizeForFirestore(newRentPayments);
+      console.log('[rent] saving', clean.length, 'payments to Firestore');
       await setDoc(doc(db, 'rentalData', 'rent'), {
-        payments: newRentPayments,
+        payments: clean,
         lastUpdated: new Date().toISOString(),
         updatedBy: currentUser
       }, { merge: true });
+      console.log('[rent] save SUCCESS');
     } catch (error) {
-      console.error('Error saving rent data:', error);
+      console.error('[rent] save FAILED:', error);
       showToast('Failed to save rent data.', 'error');
     }
   }, [user, currentUser, showToast]);
