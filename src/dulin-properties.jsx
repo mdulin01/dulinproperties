@@ -1509,6 +1509,7 @@ export default function DulinProperties() {
           <PropertySeedImport
             existingProperties={properties}
             onImport={(props) => bulkAddProperties(props)}
+            onUpdate={(id, updates) => updateProperty(id, updates)}
             onClose={() => setShowPropertyImport(false)}
           />
         )}
