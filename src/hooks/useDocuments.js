@@ -1,13 +1,11 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 
 /**
  * useDocuments Hook
  * Manages all Documents data and operations
  * All CRUD uses functional state updates (prev =>) to avoid stale closure bugs.
  */
-export const useDocuments = (currentUser, saveDocuments, showToast) => {
-  const saveRef = useRef(saveDocuments);
-  saveRef.current = saveDocuments;
+export const useDocuments = (currentUser, saveRef, showToast) => {
 
   const [documents, setDocuments] = useState([]);
   const [documentViewMode, setDocumentViewMode] = useState('byType');

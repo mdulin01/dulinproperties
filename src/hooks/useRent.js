@@ -1,13 +1,11 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 
 /**
  * useRent Hook
  * Manages rent payment ledger data and operations
  * All CRUD uses functional state updates (prev =>) to avoid stale closure bugs.
  */
-export const useRent = (currentUser, saveRent, showToast) => {
-  const saveRef = useRef(saveRent);
-  saveRef.current = saveRent;
+export const useRent = (currentUser, saveRef, showToast) => {
 
   const [rentPayments, setRentPayments] = useState([]);
   const [showAddRentModal, setShowAddRentModal] = useState(null);

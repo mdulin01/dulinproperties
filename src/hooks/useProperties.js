@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 
 /**
  * Helper: get tenants array from a property, handling legacy single-tenant data.
@@ -17,9 +17,7 @@ export const getPropertyTenants = (property) => {
  * Manages all Properties data and operations in one place
  * Supports multiple tenants per property via property.tenants array.
  */
-export const useProperties = (currentUser, saveProperties, showToast) => {
-  const saveRef = useRef(saveProperties);
-  saveRef.current = saveProperties;
+export const useProperties = (currentUser, saveRef, showToast) => {
 
   const [properties, setProperties] = useState([]);
   const [selectedProperty, setSelectedProperty] = useState(null);

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 
 /**
  * useSharedHub Hook
@@ -8,10 +8,7 @@ import { useState, useCallback, useRef } from 'react';
  * All CRUD functions use functional state updates (prev =>) to avoid stale closure bugs.
  */
 
-export const useSharedHub = (currentUser, saveSharedHub, showToast) => {
-  // Keep a ref to saveSharedHub so callbacks always use the latest version
-  const saveRef = useRef(saveSharedHub);
-  saveRef.current = saveSharedHub;
+export const useSharedHub = (currentUser, saveRef, showToast) => {
 
   // ========== STATE ==========
   const [sharedTasks, setSharedTasks] = useState([]);

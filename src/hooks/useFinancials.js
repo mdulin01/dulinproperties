@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 
 /**
  * useFinancials Hook
@@ -6,9 +6,7 @@ import { useState, useCallback, useRef } from 'react';
  * CRUD uses functional state updates (prev =>) to avoid stale closure bugs.
  * Read-only aggregation helpers still use transactions from closure (fine for reads).
  */
-export const useFinancials = (currentUser, saveFinancials, showToast) => {
-  const saveRef = useRef(saveFinancials);
-  saveRef.current = saveFinancials;
+export const useFinancials = (currentUser, saveRef, showToast) => {
 
   const [transactions, setTransactions] = useState([]);
   const [financialViewMode, setFinancialViewMode] = useState('transactions');

@@ -132,7 +132,7 @@ export default function DulinProperties() {
   const expensesSaveIdRef = useRef(null); // Track our own saves to avoid onSnapshot overwrite
 
   // ========== HOOKS ==========
-  const sharedHub = useSharedHub(currentUser, saveSharedHubRef.current, showToast);
+  const sharedHub = useSharedHub(currentUser, saveSharedHubRef, showToast);
   const {
     sharedTasks, sharedLists, sharedIdeas,
     addTask, updateTask, deleteTask, completeTask, highlightTask,
@@ -147,7 +147,7 @@ export default function DulinProperties() {
     showAddIdeaModal, setShowAddIdeaModal,
   } = sharedHub;
 
-  const propertiesHook = useProperties(currentUser, savePropertiesRef.current, showToast);
+  const propertiesHook = useProperties(currentUser, savePropertiesRef, showToast);
   const {
     properties, setProperties,
     selectedProperty, setSelectedProperty,
@@ -157,7 +157,7 @@ export default function DulinProperties() {
     addProperty, bulkAddProperties, updateProperty, deleteProperty, addOrUpdateTenant, removeTenant,
   } = propertiesHook;
 
-  const documentsHook = useDocuments(currentUser, saveDocumentsRef.current, showToast);
+  const documentsHook = useDocuments(currentUser, saveDocumentsRef, showToast);
   const {
     documents, setDocuments,
     documentViewMode, setDocumentViewMode,
@@ -167,7 +167,7 @@ export default function DulinProperties() {
     addDocument, updateDocument, deleteDocument,
   } = documentsHook;
 
-  const financialsHook = useFinancials(currentUser, saveFinancialsRef.current, showToast);
+  const financialsHook = useFinancials(currentUser, saveFinancialsRef, showToast);
   const {
     transactions, setTransactions,
     financialViewMode, setFinancialViewMode,
@@ -178,7 +178,7 @@ export default function DulinProperties() {
     getTotalIncome, getTotalExpenses, getProfit, getMonthlyBreakdown, getPropertyBreakdown, getFilteredTransactions,
   } = financialsHook;
 
-  const rentHook = useRent(currentUser, saveRentRef.current, showToast);
+  const rentHook = useRent(currentUser, saveRentRef, showToast);
   const {
     rentPayments, setRentPayments,
     showAddRentModal, setShowAddRentModal,
