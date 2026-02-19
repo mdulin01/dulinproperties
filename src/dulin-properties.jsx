@@ -189,7 +189,7 @@ export default function DulinProperties() {
   const {
     expenses, setExpenses,
     showAddExpenseModal, setShowAddExpenseModal,
-    addExpense, updateExpense, deleteExpense,
+    addExpense, updateExpense, deleteExpense, bulkDeleteExpenses,
   } = expensesHook;
 
   // Property financial breakdown modal
@@ -1176,6 +1176,13 @@ export default function DulinProperties() {
                       title: 'Delete Expense',
                       message: 'Delete this expense record?',
                       onConfirm: () => { deleteExpense(expenseId); setConfirmDialog(null); },
+                    });
+                  }}
+                  onBulkDelete={(ids) => {
+                    setConfirmDialog({
+                      title: 'Delete Expenses',
+                      message: `Delete ${ids.length} selected expense${ids.length > 1 ? 's' : ''}? This cannot be undone.`,
+                      onConfirm: () => { bulkDeleteExpenses(ids); setConfirmDialog(null); },
                     });
                   }}
                   onGenerateFromTemplate={(template) => {

@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Search, Plus, ChevronDown, ChevronUp, RefreshCw, Pencil, Trash2, Calendar, Upload } from 'lucide-react';
+import React, { useState, useMemo, useCallback } from 'react';
+import { Search, Plus, ChevronDown, ChevronUp, RefreshCw, Pencil, Trash2, Calendar, Upload, CheckSquare, Square, X } from 'lucide-react';
 import { expenseCategories, recurringFrequencies } from '../../constants';
 import { formatDate, formatCurrency } from '../../utils';
 
@@ -10,13 +10,15 @@ function ordinal(n) {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
-export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDelete, onGenerateFromTemplate, onImportReport, showToast }) {
+export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDelete, onBulkDelete, onGenerateFromTemplate, onImportReport, showToast }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [propertyFilter, setPropertyFilter] = useState('all');
   const [yearFilter, setYearFilter] = useState('all');
   const [sortCol, setSortCol] = useState('date');
   const [sortDir, setSortDir] = useState('desc');
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [selectMode, setSelectMode] = useState(false);
 
   // Separate templates from regular expenses
   const templates = useMemo(() => expenses.filter(e => e.isTemplate === true), [expenses]);
@@ -73,6 +75,40 @@ export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDe
       setSortDir(col === 'amount' ? 'desc' : 'asc');
     }
   };
+
+  // Multi-select helpers
+  const toggleSelect = useCallback((id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAll = useCallback(() => {
+    setSelectedIds(new Set(sorted.map(e => e.id)));
+  }, [sorted]);
+
+  const deselectAll = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleBulkDelete = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    if (onBulkDelete) {
+      onBulkDelete([...selectedIds]);
+    } else {
+      // Fallback: delete one by one
+      [...selectedIds].forEach(id => onDelete(id));
+    }
+    exitSelectMode();
+  }, [selectedIds, onBulkDelete, onDelete, exitSelectMode]);
 
   const SortIcon = ({ col }) => {
     if (sortCol !== col) return <ChevronDown className="w-3 h-3 opacity-30 inline ml-1" />;
@@ -162,7 +198,15 @@ export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDe
           <p className="text-xs text-white/40">{regularExpenses.length} expenses · {templates.length} recurring bills</p>
         </div>
         <div className="flex items-center gap-2">
-          {onImportReport && (
+          {!selectMode && regularExpenses.length > 0 && (
+            <button
+              onClick={() => setSelectMode(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-white/[0.05] border border-white/[0.08] text-white/50 rounded-xl text-sm font-medium hover:bg-white/[0.1] hover:text-white/70 transition"
+            >
+              <CheckSquare className="w-4 h-4" /> Select
+            </button>
+          )}
+          {onImportReport && !selectMode && (
             <button
               onClick={onImportReport}
               className="flex items-center gap-1.5 px-3 py-2 bg-orange-500/20 border border-orange-500/30 text-orange-300 rounded-xl text-sm font-medium hover:bg-orange-500/30 transition"
@@ -170,14 +214,48 @@ export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDe
               <Upload className="w-4 h-4" /> Import Report
             </button>
           )}
-          <button
-            onClick={onAdd}
-            className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-xl text-sm font-medium hover:bg-red-600 transition"
-          >
-            <Plus className="w-4 h-4" /> Record Expense
-          </button>
+          {!selectMode && (
+            <button
+              onClick={onAdd}
+              className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-xl text-sm font-medium hover:bg-red-600 transition"
+            >
+              <Plus className="w-4 h-4" /> Record Expense
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Bulk action bar */}
+      {selectMode && (
+        <div className="flex items-center justify-between bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 mb-4">
+          <div className="flex items-center gap-3">
+            <button onClick={exitSelectMode} className="p-1 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition">
+              <X className="w-4 h-4" />
+            </button>
+            <span className="text-sm text-white">
+              {selectedIds.size > 0
+                ? <><span className="font-bold text-blue-300">{selectedIds.size}</span> selected ({formatCurrency(regularExpenses.filter(e => selectedIds.has(e.id)).reduce((s, e) => s + (e.amount || 0), 0))})</>
+                : 'Tap rows to select'
+              }
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={selectedIds.size === sorted.length ? deselectAll : selectAll}
+              className="px-3 py-1.5 text-xs text-white/50 hover:text-white border border-white/10 rounded-lg hover:bg-white/5 transition"
+            >
+              {selectedIds.size === sorted.length ? 'Deselect All' : 'Select All'}
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              disabled={selectedIds.size === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/20 border border-red-500/30 text-red-400 rounded-lg text-xs font-medium hover:bg-red-500/30 transition disabled:opacity-30"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Delete ({selectedIds.size})
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Summary tiles */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
@@ -337,6 +415,18 @@ export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDe
             <table className="w-full">
               <thead>
                 <tr className="border-b border-white/[0.08]">
+                  {selectMode && (
+                    <th className="w-10 px-3 py-3">
+                      <button
+                        onClick={selectedIds.size === sorted.length ? deselectAll : selectAll}
+                        className="text-white/40 hover:text-white/70 transition"
+                      >
+                        {selectedIds.size === sorted.length
+                          ? <CheckSquare className="w-4 h-4 text-blue-400" />
+                          : <Square className="w-4 h-4" />}
+                      </button>
+                    </th>
+                  )}
                   <th className="text-left px-4 py-3 text-xs font-semibold text-white/40 uppercase tracking-wide cursor-pointer hover:text-white/60" onClick={() => handleSort('date')}>
                     Date <SortIcon col="date" />
                   </th>
@@ -358,9 +448,20 @@ export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDe
                 {sorted.map(exp => (
                   <tr
                     key={exp.id}
-                    className="border-b border-white/[0.05] hover:bg-white/[0.03] transition cursor-pointer"
-                    onClick={() => onEdit(exp)}
+                    className={`border-b border-white/[0.05] hover:bg-white/[0.03] transition cursor-pointer ${
+                      selectMode && selectedIds.has(exp.id) ? 'bg-blue-500/[0.08]' : ''
+                    }`}
+                    onClick={() => selectMode ? toggleSelect(exp.id) : onEdit(exp)}
                   >
+                    {selectMode && (
+                      <td className="w-10 px-3 py-3">
+                        <button onClick={(e) => { e.stopPropagation(); toggleSelect(exp.id); }}>
+                          {selectedIds.has(exp.id)
+                            ? <CheckSquare className="w-4 h-4 text-blue-400" />
+                            : <Square className="w-4 h-4 text-white/30" />}
+                        </button>
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <span className="text-sm text-white/70">{exp.date ? formatDate(exp.date) : '—'}</span>
                     </td>

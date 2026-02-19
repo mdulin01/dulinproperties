@@ -207,12 +207,23 @@ export const useExpenses = (db, currentUser, showToast) => {
     showToast('Expense deleted', 'info');
   }, [db, currentUser, showToast]);
 
+  const bulkDeleteExpenses = useCallback((expenseIds) => {
+    const idSet = new Set(expenseIds);
+    setExpenses(prev => {
+      const updated = prev.filter(e => !idSet.has(e.id));
+      saveExpensesDirect(db, updated, currentUser);
+      return updated;
+    });
+    showToast(`${expenseIds.length} expenses deleted`, 'info');
+  }, [db, currentUser, showToast]);
+
   return {
     expenses,
     showAddExpenseModal,
     addExpense,
     updateExpense,
     deleteExpense,
+    bulkDeleteExpenses,
     setShowAddExpenseModal,
     setExpenses,
   };

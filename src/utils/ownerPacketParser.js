@@ -253,8 +253,9 @@ function parsePropertyPage(rows) {
     }
 
     // Parse the transaction from positional items
-    // Columns roughly: Date(~30) | Payee(~100-250) | Type(~260-350) | Reference(~360-410) | Description(~420-500) | Cash In(~510) | Cash Out(~560) | Balance(~610)
-    // But column positions vary — use heuristics
+    // PDF table columns: Date | Payee/Payer | Type | Reference | Description | Cash In | Cash Out | Balance
+    // We care most about: Date, Payee/Payer, Cash In, Cash Out
+    // Type and Reference are less important for the import
 
     const amounts = [];
     const nonAmountItems = [];
@@ -270,31 +271,37 @@ function parsePropertyPage(rows) {
     // Need at least one amount to be a valid transaction
     if (amounts.length === 0) continue;
 
-    // The non-amount items (excluding date) give us: payee, type, reference, description
+    // The non-amount items (excluding date) give us text fields
     const textParts = nonAmountItems.filter(item => item.text !== firstItem);
 
-    // Try to identify type by common keywords
-    let type = '';
-    let payee = '';
-    let description = '';
-    let reference = '';
-
+    // Known transaction types — used to detect the "Type" column
     const knownTypes = [
       'rent income', 'management fees', 'bill', 'owner distribution',
       'beginning cash balance', 'ending cash balance', 'deposit', 'credit',
       'late fee', 'nsf fee', 'security deposit', 'prepaid rent'
     ];
 
+    // Separate: payee (first non-date text), type, reference, description
+    let type = '';
+    let payee = '';
+    let descriptionParts = [];
+
     for (const part of textParts) {
       const partLower = part.text.toLowerCase();
-      if (knownTypes.some(t => partLower.includes(t))) {
+      // Skip pure reference numbers
+      if (/^\d+$/.test(part.text) || /^[A-Z]{2,4}\d+/.test(part.text) || /^#?\d{4,}/.test(part.text)) {
+        continue;
+      }
+      // Detect type column
+      if (!type && knownTypes.some(t => partLower.includes(t))) {
         type = part.text;
-      } else if (/^\d+$/.test(part.text) || /^[A-Z]{2,4}\d+/.test(part.text) || /^#?\d{4,}/.test(part.text)) {
-        reference = part.text;
-      } else if (!payee) {
+        continue;
+      }
+      // First text item after date = payee/payer (most important field)
+      if (!payee) {
         payee = part.text;
       } else {
-        description = description ? `${description} ${part.text}` : part.text;
+        descriptionParts.push(part.text);
       }
     }
 
@@ -308,57 +315,77 @@ function parsePropertyPage(rows) {
       }
     }
 
-    // Determine cash in / cash out from amounts + their positions
+    // Determine cash in / cash out from amounts + their x-positions
+    // The PDF columns are ordered: ... | Cash In | Cash Out | Balance
+    // So by x-position, leftmost amount = cash in column, middle = cash out, rightmost = balance
     let cashIn = 0;
     let cashOut = 0;
     let balance = 0;
 
-    if (amounts.length >= 3) {
-      // Three amounts: cash in, cash out, balance (rightmost is balance)
-      const sorted = [...amounts].sort((a, b) => a.x - b.x);
-      cashIn = sorted[0].value;
-      cashOut = sorted[1].value;
-      balance = sorted[2].value;
-    } else if (amounts.length === 2) {
-      // Two amounts: one of (cash in OR cash out) + balance
-      const sorted = [...amounts].sort((a, b) => a.x - b.x);
-      // The rightmost is usually balance
-      balance = sorted[sorted.length - 1].value;
-      const firstAmt = sorted[0].value;
+    // Sort amounts by x-position (left to right in the table)
+    const sortedAmounts = [...amounts].sort((a, b) => a.x - b.x);
 
-      // Determine if it's cash in or cash out based on type
-      const typeLower = (type || '').toLowerCase();
-      if (typeLower.includes('rent') || typeLower.includes('income') ||
-          typeLower.includes('deposit') || typeLower.includes('late fee') ||
-          typeLower.includes('credit')) {
-        cashIn = firstAmt;
+    // Also detect income vs expense from the type field
+    const typeLower = (type || '').toLowerCase();
+    const isIncomeType = typeLower.includes('rent') || typeLower.includes('income') ||
+        typeLower.includes('deposit') || typeLower.includes('late fee') ||
+        typeLower.includes('credit') || typeLower.includes('prepaid');
+
+    if (sortedAmounts.length >= 3) {
+      // Three amounts present: Cash In, Cash Out, Balance
+      cashIn = sortedAmounts[0].value;
+      cashOut = sortedAmounts[1].value;
+      balance = sortedAmounts[2].value;
+    } else if (sortedAmounts.length === 2) {
+      // Two amounts: could be (CashIn + Balance) or (CashOut + Balance)
+      // The rightmost is balance
+      balance = sortedAmounts[1].value;
+      const amt = sortedAmounts[0].value;
+
+      // Use x-position gap to help determine column:
+      // If the amount is far left (closer to Cash In column), it's income
+      // If it's in the middle area (Cash Out column), it's expense
+      // Also use type as a strong signal
+      if (isIncomeType) {
+        cashIn = amt;
       } else {
-        cashOut = firstAmt;
+        // Check x-position: if the gap between the two amounts is large,
+        // the first one is probably Cash In (skipping Cash Out column)
+        // If the gap is small, they're in adjacent columns (Cash Out + Balance)
+        const gap = sortedAmounts[1].x - sortedAmounts[0].x;
+        if (gap > 100 && !typeLower.includes('bill') && !typeLower.includes('management') && !typeLower.includes('owner')) {
+          // Large gap suggests Cash In column (leftmost) + Balance (rightmost), skipping Cash Out
+          cashIn = amt;
+        } else {
+          cashOut = amt;
+        }
       }
-    } else if (amounts.length === 1) {
+    } else if (sortedAmounts.length === 1) {
       // Single amount — determine direction from type
-      const typeLower = (type || '').toLowerCase();
-      if (typeLower.includes('rent') || typeLower.includes('income') ||
-          typeLower.includes('deposit') || typeLower.includes('late fee')) {
-        cashIn = amounts[0].value;
+      if (isIncomeType) {
+        cashIn = sortedAmounts[0].value;
       } else {
-        cashOut = amounts[0].value;
+        cashOut = sortedAmounts[0].value;
       }
     }
 
     // Skip balance-only rows
-    const typeLower = (type || textLower);
-    if (typeLower.includes('beginning cash balance') || typeLower.includes('ending cash balance')) {
+    const typeCheck = (type || textLower);
+    if (typeCheck.includes('beginning cash balance') || typeCheck.includes('ending cash balance')) {
       continue;
     }
+
+    // Use payee as the primary description — it's the most useful field
+    // Fall back to type if no payee found
+    const displayDescription = payee || type || 'Unknown';
+    const extraDescription = descriptionParts.join(' ');
 
     transactions.push({
       date: date || '',
       payee: payee || '',
       type: type || '',
-      reference: reference || '',
-      description: description || payee || type || '',
-      cashIn,
+      description: extraDescription ? `${displayDescription} - ${extraDescription}` : displayDescription,
+      cashIn: Math.abs(cashIn),
       cashOut: Math.abs(cashOut),
       balance,
     });
