@@ -51,6 +51,15 @@ export const useProperties = (currentUser, saveProperties, showToast) => {
     });
   }, []);
 
+  const bulkAddProperties = useCallback((newProperties) => {
+    setProperties(prev => {
+      const combined = [...prev, ...newProperties];
+      saveRef.current(combined);
+      return combined;
+    });
+    showToast(`${newProperties.length} properties added`, 'success');
+  }, [showToast]);
+
   const deleteProperty = useCallback((propertyId) => {
     setProperties(prev => {
       const newProperties = prev.filter(p => String(p.id) !== String(propertyId));
@@ -141,6 +150,7 @@ export const useProperties = (currentUser, saveProperties, showToast) => {
     showNewPropertyModal,
     showTenantModal,
     addProperty,
+    bulkAddProperties,
     updateProperty,
     deleteProperty,
     addOrUpdateTenant,

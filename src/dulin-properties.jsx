@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, X, Search, LogOut, User, Loader, MoreVertical, ChevronDown, Edit3, Trash2, Eye, DollarSign, MapPin, Calendar, FileText, CheckSquare } from 'lucide-react';
+import { Plus, X, Search, LogOut, User, Loader, MoreVertical, ChevronDown, Edit3, Trash2, Eye, DollarSign, MapPin, Calendar, FileText, CheckSquare, Upload } from 'lucide-react';
 
 // Constants and utilities
 import {
@@ -27,6 +27,7 @@ import IdeaCard from './components/SharedHub/IdeaCard';
 // Rentals components
 import PropertyCard from './components/Rentals/PropertyCard';
 import NewPropertyModal from './components/Rentals/NewPropertyModal';
+import PropertySeedImport from './components/Rentals/PropertySeedImport';
 import PropertyDetail from './components/Rentals/PropertyDetail';
 import PropertyFinancialBreakdownModal from './components/Rentals/PropertyFinancialBreakdownModal';
 import TenantModal from './components/Rentals/TenantModal';
@@ -153,7 +154,7 @@ export default function DulinProperties() {
     propertyViewMode, setPropertyViewMode,
     showNewPropertyModal, setShowNewPropertyModal,
     showTenantModal, setShowTenantModal,
-    addProperty, updateProperty, deleteProperty, addOrUpdateTenant, removeTenant,
+    addProperty, bulkAddProperties, updateProperty, deleteProperty, addOrUpdateTenant, removeTenant,
   } = propertiesHook;
 
   const documentsHook = useDocuments(currentUser, saveDocumentsRef.current, showToast);
@@ -197,6 +198,7 @@ export default function DulinProperties() {
 
   // Expense report upload modal
   const [showExpenseReportUpload, setShowExpenseReportUpload] = useState(false);
+  const [showPropertyImport, setShowPropertyImport] = useState(false);
 
   // Document viewer
   const [viewingDocument, setViewingDocument] = useState(null);
@@ -1020,12 +1022,20 @@ export default function DulinProperties() {
                               }`}>{tab.emoji}</button>
                           ))}
                         </div>
-                        <button
-                          onClick={() => setShowNewPropertyModal('create')}
-                          className="flex items-center gap-1.5 px-3 py-2 bg-teal-500 text-white rounded-xl text-sm font-medium hover:bg-teal-600 transition"
-                        >
-                          <Plus className="w-4 h-4" /> Add Property
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setShowPropertyImport(true)}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-teal-500/20 border border-teal-500/30 text-teal-300 rounded-xl text-sm font-medium hover:bg-teal-500/30 transition"
+                          >
+                            <Upload className="w-4 h-4" /> Import
+                          </button>
+                          <button
+                            onClick={() => setShowNewPropertyModal('create')}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-teal-500 text-white rounded-xl text-sm font-medium hover:bg-teal-600 transition"
+                          >
+                            <Plus className="w-4 h-4" /> Add Property
+                          </button>
+                        </div>
                       </div>
 
                       {/* Properties Grid */}
@@ -1491,6 +1501,15 @@ export default function DulinProperties() {
             }}
             onClose={() => setShowAddIdeaModal(null)}
             currentUser={currentUser}
+          />
+        )}
+
+        {/* Property Seed Import */}
+        {showPropertyImport && (
+          <PropertySeedImport
+            existingProperties={properties}
+            onImport={(props) => bulkAddProperties(props)}
+            onClose={() => setShowPropertyImport(false)}
           />
         )}
 
