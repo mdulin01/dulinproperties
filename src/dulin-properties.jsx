@@ -822,40 +822,101 @@ export default function DulinProperties() {
                 <div>
                   <h2 className="text-xl font-bold text-white mb-4">Dashboard</h2>
 
-                  {/* Outstanding rent card — only shows when rent is due */}
+                  {/* YTD Financial Summary */}
                   {(() => {
-                    const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-                    const monthLabel = new Date().toLocaleString('en-US', { month: 'long' });
-                    const rentedPropIds = new Set(
-                      properties
-                        .filter(p => ['occupied', 'lease-expired', 'month-to-month'].includes(getEffectiveStatus(p)))
-                        .map(p => String(p.id))
-                    );
-                    const paidPropIds = new Set(
-                      rentPayments
-                        .filter(r => (r.status === 'paid' || r.status === 'partial') && (r.datePaid || r.month || '').startsWith(currentMonth))
-                        .map(r => String(r.propertyId))
-                    );
-                    const unpaidProps = properties.filter(p => rentedPropIds.has(String(p.id)) && !paidPropIds.has(String(p.id)));
-                    const totalDue = unpaidProps.reduce((sum, p) => sum + (parseFloat(p.monthlyRent) || 0), 0);
+                    const currentYear = new Date().getFullYear();
+                    const currentMonthIdx = new Date().getMonth(); // 0-indexed
+                    const yearStr = String(currentYear);
 
-                    if (unpaidProps.length === 0) return null;
+                    // YTD rent income (only paid)
+                    const ytdRent = rentPayments
+                      .filter(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(yearStr))
+                      .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+
+                    // YTD expenses (non-template only)
+                    const regularExpenses = expenses.filter(e => !e.isTemplate);
+                    const ytdExpenses = regularExpenses
+                      .filter(e => (e.date || '').startsWith(yearStr))
+                      .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+
+                    const ytdNet = ytdRent - ytdExpenses;
+
+                    // Monthly breakdown: Jan of current year through Dec
+                    const months = Array.from({ length: 12 }, (_, i) => {
+                      const monthStr = `${yearStr}-${String(i + 1).padStart(2, '0')}`;
+                      const monthLabel = new Date(currentYear, i).toLocaleString('en-US', { month: 'short' });
+                      const isPast = i <= currentMonthIdx;
+                      const isCurrent = i === currentMonthIdx;
+
+                      const income = rentPayments
+                        .filter(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(monthStr))
+                        .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+
+                      const exp = regularExpenses
+                        .filter(e => (e.date || '').startsWith(monthStr))
+                        .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+
+                      return { monthStr, monthLabel, income, expenses: exp, net: income - exp, isPast, isCurrent };
+                    });
+
                     return (
-                      <button onClick={() => setActiveSection('rent')}
-                        className="w-full bg-red-500/10 border border-red-500/20 rounded-2xl p-4 mb-6 text-left hover:bg-red-500/15 transition cursor-pointer">
-                        <div className="flex items-center justify-between mb-2">
-                          <h3 className="text-sm font-semibold text-red-400">Outstanding Rent — {monthLabel}</h3>
-                          <p className="text-xl font-bold text-red-400">{formatCurrency(totalDue)}</p>
+                      <>
+                        {/* YTD cards */}
+                        <div className="grid grid-cols-3 gap-3 mb-6">
+                          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center">
+                            <p className="text-[10px] font-semibold text-emerald-400/70 uppercase tracking-wider mb-1">YTD Gross Income</p>
+                            <p className="text-xl font-bold text-emerald-400">{formatCurrency(ytdRent)}</p>
+                          </div>
+                          <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 text-center">
+                            <p className="text-[10px] font-semibold text-red-400/70 uppercase tracking-wider mb-1">YTD Expenses</p>
+                            <p className="text-xl font-bold text-red-400">{formatCurrency(ytdExpenses)}</p>
+                          </div>
+                          <div className={`${ytdNet >= 0 ? 'bg-teal-500/10 border-teal-500/20' : 'bg-orange-500/10 border-orange-500/20'} border rounded-2xl p-4 text-center`}>
+                            <p className={`text-[10px] font-semibold ${ytdNet >= 0 ? 'text-teal-400/70' : 'text-orange-400/70'} uppercase tracking-wider mb-1`}>YTD Net Income</p>
+                            <p className={`text-xl font-bold ${ytdNet >= 0 ? 'text-teal-400' : 'text-orange-400'}`}>{formatCurrency(ytdNet)}</p>
+                          </div>
                         </div>
-                        <div className="space-y-1">
-                          {unpaidProps.map(p => (
-                            <div key={p.id} className="flex items-center justify-between text-sm">
-                              <span className="text-white/60">{p.emoji || '🏠'} {p.name}</span>
-                              <span className="text-red-400/70">{formatCurrency(parseFloat(p.monthlyRent) || 0)}</span>
+
+                        {/* Monthly summary table */}
+                        <div className="bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden mb-6">
+                          <div className="px-4 py-3 border-b border-white/5">
+                            <h3 className="text-sm font-semibold text-white/70">{currentYear} Monthly Summary</h3>
+                          </div>
+                          <div className="divide-y divide-white/5">
+                            {/* Header */}
+                            <div className="grid grid-cols-4 gap-2 px-4 py-2 text-[10px] font-semibold text-white/30 uppercase tracking-wider">
+                              <span>Month</span>
+                              <span className="text-right">Income</span>
+                              <span className="text-right">Expenses</span>
+                              <span className="text-right">Net</span>
                             </div>
-                          ))}
+                            {months.map(m => (
+                              <div key={m.monthStr}
+                                className={`grid grid-cols-4 gap-2 px-4 py-2.5 ${m.isCurrent ? 'bg-teal-500/5' : ''} ${!m.isPast ? 'opacity-30' : ''}`}>
+                                <span className={`text-sm font-medium ${m.isCurrent ? 'text-teal-400' : 'text-white/70'}`}>
+                                  {m.monthLabel}{m.isCurrent ? ' •' : ''}
+                                </span>
+                                <span className="text-sm text-right text-emerald-400/80">
+                                  {m.isPast && m.income > 0 ? formatCurrency(m.income) : m.isPast ? '—' : ''}
+                                </span>
+                                <span className="text-sm text-right text-red-400/70">
+                                  {m.isPast && m.expenses > 0 ? formatCurrency(m.expenses) : m.isPast ? '—' : ''}
+                                </span>
+                                <span className={`text-sm text-right font-medium ${m.isPast ? (m.net >= 0 ? 'text-teal-400' : 'text-orange-400') : ''}`}>
+                                  {m.isPast && (m.income > 0 || m.expenses > 0) ? formatCurrency(m.net) : m.isPast ? '—' : ''}
+                                </span>
+                              </div>
+                            ))}
+                            {/* YTD total row */}
+                            <div className="grid grid-cols-4 gap-2 px-4 py-3 bg-white/[0.03] border-t border-white/10">
+                              <span className="text-sm font-bold text-white">YTD Total</span>
+                              <span className="text-sm text-right font-bold text-emerald-400">{formatCurrency(ytdRent)}</span>
+                              <span className="text-sm text-right font-bold text-red-400">{formatCurrency(ytdExpenses)}</span>
+                              <span className={`text-sm text-right font-bold ${ytdNet >= 0 ? 'text-teal-400' : 'text-orange-400'}`}>{formatCurrency(ytdNet)}</span>
+                            </div>
+                          </div>
                         </div>
-                      </button>
+                      </>
                     );
                   })()}
 
@@ -909,76 +970,6 @@ export default function DulinProperties() {
                       )}
                     </div>
                   )}
-
-                  {/* To-Do List */}
-                  <div className="mb-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wide">To-Do List</h3>
-                      <button onClick={() => setShowAddTaskModal('create')} className="text-xs text-teal-400 hover:text-teal-300 font-medium">+ Add Task</button>
-                    </div>
-
-                    {/* Task filters + sort */}
-                    <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-                      <div className="flex gap-1.5 flex-wrap">
-                        {timeHorizons.map(h => (
-                          <button key={h.value} onClick={() => setHubTaskFilter(h.value)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                              hubTaskFilter === h.value ? 'bg-teal-500 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
-                            }`}>{h.label}</button>
-                        ))}
-                      </div>
-                      <div className="flex gap-1.5">
-                        <button onClick={() => setHubTaskSort('priority')}
-                          className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition ${
-                            hubTaskSort === 'priority' ? 'bg-white/20 text-white' : 'bg-white/5 text-white/40 hover:bg-white/10'
-                          }`}>Priority</button>
-                        <button onClick={() => setHubTaskSort('date')}
-                          className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition ${
-                            hubTaskSort === 'date' ? 'bg-white/20 text-white' : 'bg-white/5 text-white/40 hover:bg-white/10'
-                          }`}>Due Date</button>
-                      </div>
-                    </div>
-
-                    {/* Task list */}
-                    <div className="space-y-2">
-                      {sharedTasks
-                        .filter(t => t.status !== 'done')
-                        .filter(t => taskMatchesHorizon(t, hubTaskFilter))
-                        .sort((a, b) => {
-                          if (hubTaskSort === 'date') {
-                            // Sort by due date first, then priority
-                            const da = a.dueDate || '9999';
-                            const db = b.dueDate || '9999';
-                            if (da !== db) return da.localeCompare(db);
-                            const pOrder = { high: 0, medium: 1, low: 2 };
-                            return (pOrder[a.priority] ?? 2) - (pOrder[b.priority] ?? 2);
-                          } else {
-                            // Sort by priority first, then due date
-                            const pOrder = { high: 0, medium: 1, low: 2 };
-                            const pa = pOrder[a.priority] ?? 2;
-                            const pb = pOrder[b.priority] ?? 2;
-                            if (pa !== pb) return pa - pb;
-                            return (a.dueDate || '9999').localeCompare(b.dueDate || '9999');
-                          }
-                        })
-                        .map(task => (
-                          <TaskCard
-                            key={task.id}
-                            task={task}
-                            onComplete={() => completeTask(task.id)}
-                            onEdit={() => setShowAddTaskModal(task)}
-                            onDelete={() => deleteTask(task.id)}
-                            onHighlight={() => highlightTask(task.id)}
-                            showToast={showToast}
-                            currentUser={currentUser}
-                            getLinkedLabel={(linked) => linked?.propertyId ? getPropertyName(linked.propertyId) : null}
-                          />
-                        ))}
-                      {sharedTasks.filter(t => t.status !== 'done').filter(t => taskMatchesHorizon(t, hubTaskFilter)).length === 0 && (
-                        <p className="text-center text-white/30 py-8">No tasks match this filter</p>
-                      )}
-                    </div>
-                  </div>
                 </div>
               )}
 
