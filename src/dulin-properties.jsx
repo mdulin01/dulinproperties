@@ -196,6 +196,7 @@ export default function DulinProperties() {
 
   // Property financial breakdown modal
   const [showPropertyBreakdown, setShowPropertyBreakdown] = useState(false);
+  const [propertySortBy, setPropertySortBy] = useState('none');
 
   // Expense report upload modal
   const [showExpenseReportUpload, setShowExpenseReportUpload] = useState(false);
@@ -1015,16 +1016,17 @@ export default function DulinProperties() {
                     <>
                       {/* Sub-nav */}
                       <div className="flex gap-1.5 mb-4 items-center justify-between sticky top-[57px] z-20 bg-slate-900/95 backdrop-blur-md py-3 -mx-4 px-4">
-                        <div className="flex gap-1.5">
+                        <div className="flex gap-1.5 flex-wrap">
                           {[
-                            { id: 'grid', emoji: '🏠' },
-                            { id: 'tasks', emoji: '📋' },
-                            { id: 'overview', emoji: '📊' },
-                          ].map(tab => (
-                            <button key={tab.id} onClick={() => setPropertyViewMode(tab.id)}
-                              className={`px-3 md:px-4 py-2 rounded-xl font-medium transition text-base md:text-lg text-center ${
-                                propertyViewMode === tab.id ? 'bg-teal-500 text-white shadow-lg' : 'bg-white/10 text-slate-300 hover:bg-white/20'
-                              }`}>{tab.emoji}</button>
+                            { id: 'none', label: 'All' },
+                            { id: 'status', label: 'Status' },
+                            { id: 'cashflow', label: 'Cash Flow' },
+                            { id: 'manager', label: 'Manager' },
+                          ].map(s => (
+                            <button key={s.id} onClick={() => setPropertySortBy(s.id)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                                propertySortBy === s.id ? 'bg-teal-500 text-white' : 'bg-white/10 text-white/50 hover:bg-white/15'
+                              }`}>{s.label}</button>
                           ))}
                         </div>
                         <div className="flex items-center gap-2">
@@ -1044,9 +1046,37 @@ export default function DulinProperties() {
                       </div>
 
                       {/* Properties Grid */}
-                      {propertyViewMode === 'grid' && (
+                      {(() => {
+                        // Management company mapping based on card color
+                        const getManager = (color) => {
+                          if (!color) return 'Absolute';
+                          if (color.includes('purple') || color.includes('violet') || color.includes('indigo')) return 'Barnett & Hill';
+                          if (color.includes('rose') || color.includes('pink')) return 'Dianne Dulin';
+                          return 'Absolute';
+                        };
+
+                        // Sorting
+                        const sortedProperties = [...properties].sort((a, b) => {
+                          if (propertySortBy === 'status') {
+                            const statusOrder = { 'occupied': 0, 'owner-occupied': 1, 'month-to-month': 2, 'lease-expired': 3, 'renovation': 4, 'vacant': 5 };
+                            const sa = statusOrder[a.propertyStatus || (getPropertyTenants(a).length > 0 ? 'occupied' : 'vacant')] ?? 9;
+                            const sb = statusOrder[b.propertyStatus || (getPropertyTenants(b).length > 0 ? 'occupied' : 'vacant')] ?? 9;
+                            return sa - sb;
+                          }
+                          if (propertySortBy === 'cashflow') {
+                            const cfA = (parseFloat(a.monthlyRent) || 0) - (parseFloat(a.mortgageMonthlyPayment) || 0) - (parseFloat(a.escrowMonthly) || 0);
+                            const cfB = (parseFloat(b.monthlyRent) || 0) - (parseFloat(b.mortgageMonthlyPayment) || 0) - (parseFloat(b.escrowMonthly) || 0);
+                            return cfB - cfA;
+                          }
+                          if (propertySortBy === 'manager') {
+                            return getManager(a.color).localeCompare(getManager(b.color));
+                          }
+                          return 0;
+                        });
+
+                        return (
                         <div className="grid grid-cols-1 gap-4">
-                          {properties.map(property => (
+                          {sortedProperties.map(property => (
                             <PropertyCard
                               key={property.id}
                               property={property}
@@ -1075,60 +1105,9 @@ export default function DulinProperties() {
                             </div>
                           )}
                         </div>
-                      )}
+                        );
+                      })()}
 
-                      {/* Property Tasks */}
-                      {propertyViewMode === 'tasks' && (
-                        <div className="space-y-2">
-                          {sharedTasks.filter(t => t.linkedTo?.propertyId).map(task => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onComplete={() => completeTask(task.id)}
-                              onEdit={() => setShowAddTaskModal(task)}
-                              onDelete={() => deleteTask(task.id)}
-                              onHighlight={() => highlightTask(task.id)}
-                              showToast={showToast}
-                              currentUser={currentUser}
-                              getLinkedLabel={(linked) => linked?.propertyId ? getPropertyName(linked.propertyId) : null}
-                            />
-                          ))}
-                          {sharedTasks.filter(t => t.linkedTo?.propertyId).length === 0 && (
-                            <p className="text-center text-white/30 py-8">No property-linked tasks</p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Property Overview */}
-                      {propertyViewMode === 'overview' && (
-                        <div className="space-y-4">
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="bg-white/[0.05] border border-white/[0.08] rounded-2xl p-4">
-                              <p className="text-white/40 text-xs mb-1">Total Properties</p>
-                              <p className="text-3xl font-bold text-teal-400">{properties.length}</p>
-                            </div>
-                            <div className="bg-white/[0.05] border border-white/[0.08] rounded-2xl p-4">
-                              <p className="text-white/40 text-xs mb-1">Occupied</p>
-                              <p className="text-3xl font-bold text-green-400">{activeProperties.length}</p>
-                            </div>
-                            <div className="bg-white/[0.05] border border-white/[0.08] rounded-2xl p-4">
-                              <p className="text-white/40 text-xs mb-1">Not Collecting Rent</p>
-                              <p className="text-3xl font-bold text-red-400">{notCollectingRent.length}</p>
-                              {(vacantProperties.length > 0 || renovationProperties.length > 0) && (
-                                <p className="text-white/30 text-xs mt-1">
-                                  {vacantProperties.length > 0 && `${vacantProperties.length} vacant`}
-                                  {vacantProperties.length > 0 && renovationProperties.length > 0 && ' · '}
-                                  {renovationProperties.length > 0 && `${renovationProperties.length} renovation`}
-                                </p>
-                              )}
-                            </div>
-                            <div className="bg-white/[0.05] border border-white/[0.08] rounded-2xl p-4">
-                              <p className="text-white/40 text-xs mb-1">Monthly Rent</p>
-                              <p className="text-3xl font-bold text-emerald-400">{formatCurrency(properties.reduce((sum, p) => sum + (parseFloat(p.monthlyRent) || 0), 0))}</p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
                     </>
                   )}
                 </div>

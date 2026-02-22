@@ -52,6 +52,15 @@ const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, documents = [
   const propStatus = property.propertyStatus || (tenants.length > 0 ? 'occupied' : 'vacant');
   const statusObj = propertyStatuses.find(s => s.value === propStatus) || propertyStatuses[1];
 
+  // Management company from color
+  const getManager = (color) => {
+    if (!color) return { name: 'Absolute', colorClass: 'text-teal-400/60 border-teal-400/20 bg-teal-400/5' };
+    if (color.includes('purple') || color.includes('violet') || color.includes('indigo')) return { name: 'Barnett & Hill', colorClass: 'text-purple-400/60 border-purple-400/20 bg-purple-400/5' };
+    if (color.includes('rose') || color.includes('pink')) return { name: 'Dianne Dulin', colorClass: 'text-pink-400/60 border-pink-400/20 bg-pink-400/5' };
+    return { name: 'Absolute', colorClass: 'text-teal-400/60 border-teal-400/20 bg-teal-400/5' };
+  };
+  const manager = getManager(property.color);
+
   // Lease countdown
   const getLeaseInfo = () => {
     const activeTenants = tenants.filter(t => t.leaseEnd);
@@ -127,6 +136,9 @@ const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, documents = [
               <div className="flex items-center gap-2 mt-2 flex-wrap">
                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${statusObj.bg} ${statusObj.color} ${statusObj.border}`}>
                   {statusObj.label}
+                </span>
+                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${manager.colorClass}`}>
+                  {manager.name}
                 </span>
                 {leaseInfo && (
                   <span className={`text-[10px] font-medium flex items-center gap-0.5 ${
