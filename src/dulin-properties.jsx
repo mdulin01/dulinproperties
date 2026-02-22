@@ -824,8 +824,8 @@ export default function DulinProperties() {
 
                   {/* YTD Financial Summary */}
                   {(() => {
-                    const currentYear = 2025;
-                    const currentMonthIdx = currentYear === new Date().getFullYear() ? new Date().getMonth() : 11;
+                    const currentYear = new Date().getFullYear();
+                    const currentMonthIdx = new Date().getMonth(); // 0-indexed
                     const yearStr = String(currentYear);
 
                     // YTD rent income (only paid)
