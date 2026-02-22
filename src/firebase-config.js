@@ -1,13 +1,12 @@
 // Firebase Configuration for Dulin Properties
-// Credentials are loaded from environment variables (.env.local)
-// See .env.example for the required variables
+// These are public client-side Firebase keys (safe to commit)
 
 export const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+  apiKey: "AIzaSyBUAL20MJ-uq-NFyaHfhwhbRHxzzmpT1mY",
+  authDomain: "dulinproperties.firebaseapp.com",
+  projectId: "dulinproperties",
+  storageBucket: "dulinproperties.firebasestorage.app",
+  messagingSenderId: "678391999949",
+  appId: "1:678391999949:web:90918c060e01e6036ba884",
+  measurementId: "G-5GSP5N9ZN1"
 };
