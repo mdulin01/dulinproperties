@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { X, Upload, FileText, Check, AlertCircle, Trash2, Loader, ChevronDown, ChevronUp, DollarSign, TrendingUp, TrendingDown, Building } from 'lucide-react';
+import logger from '../../logger';
 import { expenseCategories, incomeCategories } from '../../constants';
 import { formatCurrency } from '../../utils';
 import { parseOwnerPacket } from '../../utils/ownerPacketParser';
@@ -225,7 +226,7 @@ export default function ExpenseReportUpload({ properties, onImport, onClose }) {
       setParsedItems(items);
       setStep('review');
     } catch (err) {
-      console.error('PDF parse error:', err);
+      logger.error('PDF parse error:', err);
       setParseError(`Failed to parse PDF: ${err.message}`);
       setStep('upload');
     }

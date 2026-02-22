@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
+import logger from '../logger';
 
 /**
  * Get the last day of a given month.
@@ -134,17 +135,17 @@ export function sanitizeForFirestore(obj) {
  */
 async function saveExpensesDirect(db, expenses, currentUser) {
   if (!db) {
-    console.error('[expenses] saveExpensesDirect: no db instance!');
+    logger.error('[expenses] saveExpensesDirect: no db instance!');
     return false;
   }
   if (!expenses || expenses.length === 0) {
-    console.error('[expenses] saveExpensesDirect: refusing to save empty array');
+    logger.error('[expenses] saveExpensesDirect: refusing to save empty array');
     return false;
   }
   // Sanitize: Firestore rejects undefined values
   const cleanExpenses = sanitizeForFirestore(expenses);
   const saveId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  console.log('[expenses] saveExpensesDirect: saving', cleanExpenses.length, 'expenses, saveId:', saveId);
+  logger.log('[expenses] saveExpensesDirect: saving', cleanExpenses.length, 'expenses, saveId:', saveId);
   try {
     await setDoc(doc(db, 'rentalData', 'expenses'), {
       expenses: cleanExpenses,
@@ -152,10 +153,10 @@ async function saveExpensesDirect(db, expenses, currentUser) {
       updatedBy: currentUser || 'unknown',
       saveId: saveId,
     }, { merge: true });
-    console.log('[expenses] saveExpensesDirect: SUCCESS');
+    logger.log('[expenses] saveExpensesDirect: SUCCESS');
     return true;
   } catch (error) {
-    console.error('[expenses] saveExpensesDirect: FAILED', error);
+    logger.error('[expenses] saveExpensesDirect: FAILED', error);
     return false;
   }
 }
@@ -177,10 +178,10 @@ export const useExpenses = (db, currentUser, showToast) => {
       id: expense.id || Date.now().toString(),
       createdAt: expense.createdAt || new Date().toISOString(),
     };
-    console.log('[expenses] addExpense called:', newExpense.description || newExpense.category);
+    logger.log('[expenses] addExpense called:', newExpense.description || newExpense.category);
     setExpenses(prev => {
       const updated = [...prev, newExpense];
-      console.log('[expenses] addExpense: saving', updated.length, 'total expenses');
+      logger.log('[expenses] addExpense: saving', updated.length, 'total expenses');
       saveExpensesDirect(db, updated, currentUser);
       return updated;
     });

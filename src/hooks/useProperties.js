@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import logger from '../logger';
 
 /**
  * Helper: get tenants array from a property, handling legacy single-tenant data.
@@ -116,7 +117,7 @@ export const useProperties = (currentUser, saveRef, showToast) => {
     if (matched) {
       showToast('Tenant saved', 'success');
     } else {
-      console.error('addOrUpdateTenant: no property matched id', propertyId);
+      logger.error('addOrUpdateTenant: no property matched id', propertyId);
       showToast('Error: property not found', 'error');
     }
   }, [showToast]);

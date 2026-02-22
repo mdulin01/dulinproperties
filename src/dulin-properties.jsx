@@ -75,6 +75,7 @@ import heic2any from 'heic2any';
 
 // Import Firebase config
 import { firebaseConfig } from './firebase-config';
+import logger from './logger';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -249,17 +250,17 @@ export default function DulinProperties() {
   const hubDataLoadedRef = useRef(false);
 
   const saveSharedHub = useCallback(async (newLists, newTasks, newIdeas) => {
-    if (!user) { console.warn('[hub] save skipped: no user'); return; }
-    if (!hubDataLoadedRef.current) { console.warn('[hub] save skipped: data not loaded yet'); return; }
+    if (!user) { logger.warn('[hub] save skipped: no user'); return; }
+    if (!hubDataLoadedRef.current) { logger.warn('[hub] save skipped: data not loaded yet'); return; }
     try {
       const updates = { lastUpdated: new Date().toISOString(), updatedBy: currentUser };
       if (newLists !== null && newLists !== undefined) updates.lists = sanitizeForFirestore(newLists);
       if (newTasks !== null && newTasks !== undefined) updates.tasks = sanitizeForFirestore(newTasks);
       if (newIdeas !== null && newIdeas !== undefined) updates.ideas = sanitizeForFirestore(newIdeas);
       await setDoc(doc(db, 'rentalData', 'sharedHub'), updates, { merge: true });
-      console.log('[hub] save SUCCESS');
+      logger.log('[hub] save SUCCESS');
     } catch (error) {
-      console.error('[hub] save FAILED:', error);
+      logger.error('[hub] save FAILED:', error);
       showToast('Failed to save. Please try again.', 'error');
     }
   }, [user, currentUser, showToast]);
@@ -267,18 +268,18 @@ export default function DulinProperties() {
   useEffect(() => { saveSharedHubRef.current = saveSharedHub; }, [saveSharedHub]);
 
   const savePropertiesToFirestore = useCallback(async (newProperties) => {
-    if (!user) { console.warn('[properties] save skipped: no user'); return; }
+    if (!user) { logger.warn('[properties] save skipped: no user'); return; }
     try {
       const clean = sanitizeForFirestore(newProperties);
-      console.log('[properties] saving', clean.length, 'properties to Firestore');
+      logger.log('[properties] saving', clean.length, 'properties to Firestore');
       await setDoc(doc(db, 'rentalData', 'properties'), {
         properties: clean,
         lastUpdated: new Date().toISOString(),
         updatedBy: currentUser
       }, { merge: true });
-      console.log('[properties] save SUCCESS');
+      logger.log('[properties] save SUCCESS');
     } catch (error) {
-      console.error('[properties] save FAILED:', error);
+      logger.error('[properties] save FAILED:', error);
       showToast('Failed to save property data.', 'error');
     }
   }, [user, currentUser, showToast]);
@@ -286,18 +287,18 @@ export default function DulinProperties() {
   useEffect(() => { savePropertiesRef.current = savePropertiesToFirestore; }, [savePropertiesToFirestore]);
 
   const saveDocumentsToFirestore = useCallback(async (newDocuments) => {
-    if (!user) { console.warn('[documents] save skipped: no user'); return; }
+    if (!user) { logger.warn('[documents] save skipped: no user'); return; }
     try {
       const clean = sanitizeForFirestore(newDocuments);
-      console.log('[documents] saving', clean.length, 'documents to Firestore');
+      logger.log('[documents] saving', clean.length, 'documents to Firestore');
       await setDoc(doc(db, 'rentalData', 'documents'), {
         documents: clean,
         lastUpdated: new Date().toISOString(),
         updatedBy: currentUser
       }, { merge: true });
-      console.log('[documents] save SUCCESS');
+      logger.log('[documents] save SUCCESS');
     } catch (error) {
-      console.error('[documents] save FAILED:', error);
+      logger.error('[documents] save FAILED:', error);
       showToast('Failed to save document data.', 'error');
     }
   }, [user, currentUser, showToast]);
@@ -305,18 +306,18 @@ export default function DulinProperties() {
   useEffect(() => { saveDocumentsRef.current = saveDocumentsToFirestore; }, [saveDocumentsToFirestore]);
 
   const saveFinancialsToFirestore = useCallback(async (newTransactions) => {
-    if (!user) { console.warn('[financials] save skipped: no user'); return; }
+    if (!user) { logger.warn('[financials] save skipped: no user'); return; }
     try {
       const clean = sanitizeForFirestore(newTransactions);
-      console.log('[financials] saving', clean.length, 'transactions to Firestore');
+      logger.log('[financials] saving', clean.length, 'transactions to Firestore');
       await setDoc(doc(db, 'rentalData', 'financials'), {
         transactions: clean,
         lastUpdated: new Date().toISOString(),
         updatedBy: currentUser
       }, { merge: true });
-      console.log('[financials] save SUCCESS');
+      logger.log('[financials] save SUCCESS');
     } catch (error) {
-      console.error('[financials] save FAILED:', error);
+      logger.error('[financials] save FAILED:', error);
       showToast('Failed to save financial data.', 'error');
     }
   }, [user, currentUser, showToast]);
@@ -324,18 +325,18 @@ export default function DulinProperties() {
   useEffect(() => { saveFinancialsRef.current = saveFinancialsToFirestore; }, [saveFinancialsToFirestore]);
 
   const saveRentToFirestore = useCallback(async (newRentPayments) => {
-    if (!user) { console.warn('[rent] save skipped: no user'); return; }
+    if (!user) { logger.warn('[rent] save skipped: no user'); return; }
     try {
       const clean = sanitizeForFirestore(newRentPayments);
-      console.log('[rent] saving', clean.length, 'payments to Firestore');
+      logger.log('[rent] saving', clean.length, 'payments to Firestore');
       await setDoc(doc(db, 'rentalData', 'rent'), {
         payments: clean,
         lastUpdated: new Date().toISOString(),
         updatedBy: currentUser
       }, { merge: true });
-      console.log('[rent] save SUCCESS');
+      logger.log('[rent] save SUCCESS');
     } catch (error) {
-      console.error('[rent] save FAILED:', error);
+      logger.error('[rent] save FAILED:', error);
       showToast('Failed to save rent data.', 'error');
     }
   }, [user, currentUser, showToast]);
@@ -364,7 +365,7 @@ export default function DulinProperties() {
         setDataLoading(false);
       },
       (error) => {
-        console.error('Error loading hub data:', error);
+        logger.error('Error loading hub data:', error);
         setDataLoading(false);
       }
     );
@@ -378,7 +379,7 @@ export default function DulinProperties() {
           if (data.properties) setProperties(data.properties);
         }
       },
-      (error) => console.error('Error loading properties:', error)
+      (error) => logger.error('Error loading properties:', error)
     );
 
     // Subscribe to documents
@@ -390,7 +391,7 @@ export default function DulinProperties() {
           if (data.documents) setDocuments(data.documents);
         }
       },
-      (error) => console.error('Error loading documents:', error)
+      (error) => logger.error('Error loading documents:', error)
     );
 
     // Subscribe to financials
@@ -402,7 +403,7 @@ export default function DulinProperties() {
           if (data.transactions) setTransactions(data.transactions);
         }
       },
-      (error) => console.error('Error loading financials:', error)
+      (error) => logger.error('Error loading financials:', error)
     );
 
     // Subscribe to rent payments
@@ -414,33 +415,33 @@ export default function DulinProperties() {
           if (data.payments) setRentPayments(data.payments);
         }
       },
-      (error) => console.error('Error loading rent data:', error)
+      (error) => logger.error('Error loading rent data:', error)
     );
 
     // Subscribe to expenses
     const expensesUnsubscribe = onSnapshot(
       doc(db, 'rentalData', 'expenses'),
       (docSnap) => {
-        console.log('[expenses] onSnapshot fired, exists:', docSnap.exists());
+        logger.log('[expenses] onSnapshot fired, exists:', docSnap.exists());
         if (docSnap.exists()) {
           const data = docSnap.data();
-          console.log('[expenses] onSnapshot data: saveId=', data.saveId, 'expenses count=', data.expenses?.length || 0);
+          logger.log('[expenses] onSnapshot data: saveId=', data.saveId, 'expenses count=', data.expenses?.length || 0);
           // If this snapshot was triggered by our own save, skip to avoid overwriting local state
           if (data.saveId && data.saveId === expensesSaveIdRef.current) {
-            console.log('[expenses] Skipping onSnapshot from our own save');
+            logger.log('[expenses] Skipping onSnapshot from our own save');
             return;
           }
           if (data.expenses && data.expenses.length > 0) {
-            console.log('[expenses] onSnapshot: applying', data.expenses.length, 'expenses to state');
+            logger.log('[expenses] onSnapshot: applying', data.expenses.length, 'expenses to state');
             setExpenses(data.expenses);
           } else {
-            console.warn('[expenses] onSnapshot: document exists but expenses is empty/missing');
+            logger.warn('[expenses] onSnapshot: document exists but expenses is empty/missing');
           }
         } else {
-          console.warn('[expenses] onSnapshot: document does NOT exist in Firestore!');
+          logger.warn('[expenses] onSnapshot: document does NOT exist in Firestore!');
         }
       },
-      (error) => console.error('[expenses] onSnapshot ERROR:', error)
+      (error) => logger.error('[expenses] onSnapshot ERROR:', error)
     );
 
     return () => {
@@ -472,11 +473,11 @@ export default function DulinProperties() {
           const data = docSnap.exists() ? docSnap.data() : {};
           const firestoreExpenses = data.expenses || [];
 
-          console.log('[expenses] Auto-creation: read', firestoreExpenses.length, 'expenses from Firestore');
+          logger.log('[expenses] Auto-creation: read', firestoreExpenses.length, 'expenses from Firestore');
 
           const newExpenses = autoCreateRecurringExpenses(firestoreExpenses);
           if (newExpenses.length === 0) {
-            console.log('[expenses] Auto-creation: no new expenses needed');
+            logger.log('[expenses] Auto-creation: no new expenses needed');
             return; // Nothing to do — transaction aborts cleanly
           }
 
@@ -484,7 +485,7 @@ export default function DulinProperties() {
           const saveId = `${Date.now()}-auto`;
           expensesSaveIdRef.current = saveId;
 
-          console.log('[expenses] Auto-creation: writing', updated.length, 'expenses (added', newExpenses.length, ')');
+          logger.log('[expenses] Auto-creation: writing', updated.length, 'expenses (added', newExpenses.length, ')');
 
           const cleanUpdated = sanitizeForFirestore(updated);
           transaction.set(expensesDocRef, {
@@ -499,7 +500,7 @@ export default function DulinProperties() {
           showToast(`Auto-created ${newExpenses.length} recurring expense(s)`, 'success');
         });
       } catch (error) {
-        console.error('[expenses] Auto-creation transaction FAILED:', error);
+        logger.error('[expenses] Auto-creation transaction FAILED:', error);
       }
     }, 2000);
     return () => clearTimeout(timer);
@@ -541,7 +542,7 @@ export default function DulinProperties() {
       }));
       showToast('Photo added!', 'success');
     } catch (error) {
-      console.error('Property photo upload failed:', error);
+      logger.error('Property photo upload failed:', error);
       showToast('Photo upload failed', 'error');
     } finally {
       setUploadingPropertyPhoto(null);
@@ -561,7 +562,7 @@ export default function DulinProperties() {
       const url = await uploadPhoto(file, 'rentals/documents');
       return url;
     } catch (error) {
-      console.error('Document upload failed:', error);
+      logger.error('Document upload failed:', error);
       showToast('File upload failed', 'error');
       return null;
     } finally {
@@ -1550,6 +1551,7 @@ export default function DulinProperties() {
               setShowNewPropertyModal(null);
             }}
             onClose={() => setShowNewPropertyModal(null)}
+            showToast={showToast}
             onPhotoUpload={handlePropertyPhotoUpload}
           />
         )}
@@ -1559,6 +1561,7 @@ export default function DulinProperties() {
             property={showTenantModal}
             properties={properties}
             tenant={showTenantModal?._editTenant || (showTenantModal?._addNew ? null : null)}
+            showToast={showToast}
             onSave={(tenantData, overridePropertyId) => {
               // Determine target property ID
               const targetId = overridePropertyId || showTenantModal.id;
@@ -1640,6 +1643,7 @@ export default function DulinProperties() {
               setShowAddTransactionModal(null);
             }}
             onClose={() => setShowAddTransactionModal(null)}
+            showToast={showToast}
           />
         )}
 
@@ -1742,7 +1746,7 @@ export default function DulinProperties() {
                     createdBy: currentUser,
                   });
                 } catch (err) {
-                  console.error('Failed to auto-save PDF to documents:', err);
+                  logger.error('Failed to auto-save PDF to documents:', err);
                 }
               }
 

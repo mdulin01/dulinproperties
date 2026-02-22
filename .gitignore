@@ -2,4 +2,6 @@ node_modules
 dist
 .DS_Store
 *.local
-*.timestamp-*.mjs
+.env*
+!.env.example
+vite.config.js.timestamp-*

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Upload, Loader } from 'lucide-react';
 import { propertyTypes, propertyColors, propertyStatuses } from '../../constants';
 
-const NewPropertyModal = ({ property, onSave, onClose }) => {
+const NewPropertyModal = ({ property, onSave, onClose, showToast }) => {
   const [formData, setFormData] = useState({
     name: '',
     street: '',
@@ -119,7 +119,7 @@ const NewPropertyModal = ({ property, onSave, onClose }) => {
 
   const handleSave = () => {
     if (!formData.name.trim()) {
-      alert('Property name is required');
+      if (showToast) showToast('Property name is required', 'error');
       return;
     }
     onSave(formData);

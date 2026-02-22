@@ -7,6 +7,7 @@ const AddTransactionModal = ({
   properties,
   onSave,
   onClose,
+  showToast,
 }) => {
   const isEditing = !!transaction;
   const isIncome = transaction ? transaction.type === 'income' : false;
@@ -41,7 +42,7 @@ const AddTransactionModal = ({
 
   const handleSave = () => {
     if (!amount || !category || !date) {
-      alert('Please fill in amount, category, and date');
+      if (showToast) showToast('Please fill in amount, category, and date', 'error');
       return;
     }
 

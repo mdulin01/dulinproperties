@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Upload, Image, Loader } from 'lucide-react';
+import logger from '../../logger';
 import { tenantStatuses } from '../../constants';
 
-const TenantModal = ({ property, properties = [], tenant, onSave, onClose, onUploadPhoto }) => {
+const TenantModal = ({ property, properties = [], tenant, onSave, onClose, onUploadPhoto, showToast }) => {
   // If property has no id (e.g. _pickProperty mode), show property picker
   const needsPropertyPicker = !property?.id;
 
@@ -84,7 +85,7 @@ const TenantModal = ({ property, properties = [], tenant, onSave, onClose, onUpl
       const url = await onUploadPhoto(file, 'tenant-licenses');
       setFormData(prev => ({ ...prev, licensePhotoUrl: url }));
     } catch (err) {
-      console.error('License upload failed:', err);
+      logger.error('License upload failed:', err);
     } finally {
       setUploadingLicense(false);
     }
@@ -92,11 +93,11 @@ const TenantModal = ({ property, properties = [], tenant, onSave, onClose, onUpl
 
   const handleSave = () => {
     if (!formData.firstName.trim()) {
-      alert('First name is required');
+      if (showToast) showToast('First name is required', 'error');
       return;
     }
     if (needsPropertyPicker && !selectedPropertyId) {
-      alert('Please select a property');
+      if (showToast) showToast('Please select a property', 'error');
       return;
     }
     const fullName = `${formData.firstName.trim()} ${formData.lastName.trim()}`.trim();
