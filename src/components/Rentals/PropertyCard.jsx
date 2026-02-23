@@ -249,10 +249,18 @@ const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, documents = [
             )}
           </div>
 
-          {/* YTD P&L */}
-          <div className="border-t border-white/[0.06] pt-2 mt-2">
+          {/* YTD Breakdown */}
+          <div className="border-t border-white/[0.06] pt-2 mt-2 space-y-1">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-white/40">YTD P&L</span>
+              <span className="text-white/40">YTD Income</span>
+              <span className="text-emerald-400 font-medium">{formatCur(ytdRent)}</span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-white/40">YTD Expenses</span>
+              <span className="text-red-400/70 font-medium">-{formatCur(ytdExpenses)}</span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-white/40">YTD Profit</span>
               <span className={`font-bold ${ytdProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                 {ytdProfit >= 0 ? '+' : ''}{formatCur(ytdProfit)}
               </span>
