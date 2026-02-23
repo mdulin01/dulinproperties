@@ -1031,12 +1031,6 @@ export default function DulinProperties() {
                         </div>
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => setShowPropertyImport(true)}
-                            className="flex items-center gap-1.5 px-3 py-2 bg-teal-500/20 border border-teal-500/30 text-teal-300 rounded-xl text-sm font-medium hover:bg-teal-500/30 transition"
-                          >
-                            <Upload className="w-4 h-4" /> Import
-                          </button>
-                          <button
                             onClick={() => setShowNewPropertyModal('create')}
                             className="flex items-center gap-1.5 px-3 py-2 bg-teal-500 text-white rounded-xl text-sm font-medium hover:bg-teal-600 transition"
                           >
