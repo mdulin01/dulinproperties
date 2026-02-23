@@ -14,12 +14,16 @@ export default function TenantsList({ properties, onEditTenant, onAddTenant, onV
   const allTenants = useMemo(() => {
     const result = [];
     properties.forEach(p => {
-      getPropertyTenants(p).forEach(t => {
+      const tenants = getPropertyTenants(p);
+      const tenantCount = tenants.length;
+      tenants.forEach(t => {
         result.push({
           ...t,
           propertyId: p.id,
           propertyName: p.name,
           propertyEmoji: p.emoji || '🏠',
+          propertyRent: parseFloat(p.monthlyRent) || 0,
+          coTenantCount: tenantCount,
         });
       });
     });
@@ -52,7 +56,11 @@ export default function TenantsList({ properties, onEditTenant, onAddTenant, onV
         case 'name': return dir * (a.name || '').localeCompare(b.name || '');
         case 'property': return dir * (a.propertyName || '').localeCompare(b.propertyName || '');
         case 'status': return dir * (a.status || '').localeCompare(b.status || '');
-        case 'rent': return dir * ((parseFloat(a.monthlyRent) || 0) - (parseFloat(b.monthlyRent) || 0));
+        case 'rent': {
+          const rentA = a.coTenantCount > 1 ? a.propertyRent / a.coTenantCount : (parseFloat(a.monthlyRent) || 0);
+          const rentB = b.coTenantCount > 1 ? b.propertyRent / b.coTenantCount : (parseFloat(b.monthlyRent) || 0);
+          return dir * (rentA - rentB);
+        }
         case 'deposit': return dir * ((parseFloat(a.securityDeposit) || 0) - (parseFloat(b.securityDeposit) || 0));
         case 'leaseEnd': return dir * (a.leaseEnd || '9999').localeCompare(b.leaseEnd || '9999');
         default: return 0;
@@ -128,7 +136,7 @@ export default function TenantsList({ properties, onEditTenant, onAddTenant, onV
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="bg-white/[0.05] border border-white/[0.08] rounded-2xl p-3">
           <p className="text-white/40 text-xs mb-1">Total Tenants</p>
           <p className="text-xl font-bold text-teal-400">{allTenants.length}</p>
@@ -136,10 +144,6 @@ export default function TenantsList({ properties, onEditTenant, onAddTenant, onV
         <div className="bg-white/[0.05] border border-white/[0.08] rounded-2xl p-3">
           <p className="text-white/40 text-xs mb-1">Active</p>
           <p className="text-xl font-bold text-green-400">{allTenants.filter(t => t.status === 'active').length}</p>
-        </div>
-        <div className="bg-white/[0.05] border border-white/[0.08] rounded-2xl p-3">
-          <p className="text-white/40 text-xs mb-1">Vacant Units</p>
-          <p className="text-xl font-bold text-red-400">{vacantCount}</p>
         </div>
         <div className="bg-white/[0.05] border border-white/[0.08] rounded-2xl p-3">
           <p className="text-white/40 text-xs mb-1">Monthly Rent</p>
@@ -219,9 +223,20 @@ export default function TenantsList({ properties, onEditTenant, onAddTenant, onV
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <span className="text-sm font-medium text-emerald-400">
-                          {tenant.monthlyRent ? formatCurrency(tenant.monthlyRent) : '—'}
-                        </span>
+                        {tenant.coTenantCount > 1 ? (
+                          <div>
+                            <span className="text-sm font-medium text-emerald-400">
+                              {formatCurrency(tenant.propertyRent / tenant.coTenantCount)}
+                            </span>
+                            <span className="text-[10px] text-white/30 block">
+                              split {tenant.coTenantCount} ways
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-sm font-medium text-emerald-400">
+                            {tenant.monthlyRent ? formatCurrency(tenant.monthlyRent) : '—'}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <span className="text-sm text-white/60">
