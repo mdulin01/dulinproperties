@@ -19,7 +19,7 @@ const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, documents = [
   const monthsElapsed = Math.max(1, new Date().getMonth() + 1);
 
   const ytdExpenses = (expenses || [])
-    .filter(e => String(e.propertyId) === propId && e.isTemplate !== true)
+    .filter(e => String(e.propertyId) === propId && e.isTemplate !== true && e.category !== 'owner-distribution')
     .filter(e => e.date && e.date.startsWith(String(currentYear)))
     .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
   const avgMonthlyExpenses = ytdExpenses / monthsElapsed;

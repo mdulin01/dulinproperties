@@ -434,7 +434,24 @@ export default function DulinProperties() {
           }
           if (data.expenses && data.expenses.length > 0) {
             logger.log('[expenses] onSnapshot: applying', data.expenses.length, 'expenses to state');
-            setExpenses(data.expenses);
+            // Auto-reclassify owner distributions (one-time migration)
+            let needsSave = false;
+            const migrated = data.expenses.map(e => {
+              if (e.category === 'other' && (e.description || '').toLowerCase().includes('echeck') &&
+                  (e.vendor || e.description || '').toLowerCase().includes('dianne dulin')) {
+                needsSave = true;
+                return { ...e, category: 'owner-distribution' };
+              }
+              return e;
+            });
+            if (needsSave) {
+              logger.log('[expenses] Auto-reclassifying eCheck entries as owner-distribution');
+              setExpenses(migrated);
+              // Save migrated data back
+              setDoc(doc(db, 'rentalData', 'expenses'), { expenses: migrated, lastUpdated: new Date().toISOString(), updatedBy: 'migration' }, { merge: true });
+            } else {
+              setExpenses(data.expenses);
+            }
           } else {
             logger.warn('[expenses] onSnapshot: document exists but expenses is empty/missing');
           }
@@ -829,18 +846,24 @@ export default function DulinProperties() {
                     const currentMonthIdx = new Date().getMonth(); // 0-indexed
                     const yearStr = String(currentYear);
 
+                    // Helper: check if expense is a distribution
+                    const isDistribution = (e) => e.category === 'owner-distribution';
+                    const isMgmtFee = (e) => e.category === 'management-fee';
+                    const isOperatingExpense = (e) => !isDistribution(e) && !isMgmtFee(e);
+
                     // YTD rent income (only paid)
                     const ytdRent = rentPayments
                       .filter(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(yearStr))
                       .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
 
-                    // YTD expenses (non-template only)
+                    // YTD expenses broken down (non-template only)
                     const regularExpenses = expenses.filter(e => !e.isTemplate);
-                    const ytdExpenses = regularExpenses
-                      .filter(e => (e.date || '').startsWith(yearStr))
-                      .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
-
-                    const ytdNet = ytdRent - ytdExpenses;
+                    const ytdAll = regularExpenses.filter(e => (e.date || '').startsWith(yearStr));
+                    const ytdMgmtFees = ytdAll.filter(isMgmtFee).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                    const ytdOpEx = ytdAll.filter(isOperatingExpense).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                    const ytdDistributions = ytdAll.filter(isDistribution).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                    const ytdTotalExpenses = ytdMgmtFees + ytdOpEx; // distributions excluded
+                    const ytdNet = ytdRent - ytdTotalExpenses;
 
                     // Monthly breakdown: Jan of current year through Dec
                     const months = Array.from({ length: 12 }, (_, i) => {
@@ -853,28 +876,37 @@ export default function DulinProperties() {
                         .filter(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(monthStr))
                         .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
 
-                      const exp = regularExpenses
-                        .filter(e => (e.date || '').startsWith(monthStr))
-                        .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                      const monthExps = regularExpenses.filter(e => (e.date || '').startsWith(monthStr));
+                      const mgmt = monthExps.filter(isMgmtFee).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                      const opex = monthExps.filter(isOperatingExpense).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                      const dist = monthExps.filter(isDistribution).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                      const totalExp = mgmt + opex;
 
-                      return { monthStr, monthLabel, income, expenses: exp, net: income - exp, isPast, isCurrent };
+                      return { monthStr, monthLabel, income, mgmt, opex, dist, expenses: totalExp, net: income - totalExp, isPast, isCurrent };
                     });
 
                     return (
                       <>
                         {/* YTD cards */}
-                        <div className="grid grid-cols-3 gap-3 mb-6">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                           <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center">
                             <p className="text-[10px] font-semibold text-emerald-400/70 uppercase tracking-wider mb-1">YTD Gross Income</p>
                             <p className="text-xl font-bold text-emerald-400">{formatCurrency(ytdRent)}</p>
                           </div>
                           <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 text-center">
                             <p className="text-[10px] font-semibold text-red-400/70 uppercase tracking-wider mb-1">YTD Expenses</p>
-                            <p className="text-xl font-bold text-red-400">{formatCurrency(ytdExpenses)}</p>
+                            <p className="text-xl font-bold text-red-400">{formatCurrency(ytdTotalExpenses)}</p>
+                            <p className="text-[9px] text-white/30 mt-1">
+                              Mgmt: {formatCurrency(ytdMgmtFees)} · OpEx: {formatCurrency(ytdOpEx)}
+                            </p>
                           </div>
                           <div className={`${ytdNet >= 0 ? 'bg-teal-500/10 border-teal-500/20' : 'bg-orange-500/10 border-orange-500/20'} border rounded-2xl p-4 text-center`}>
                             <p className={`text-[10px] font-semibold ${ytdNet >= 0 ? 'text-teal-400/70' : 'text-orange-400/70'} uppercase tracking-wider mb-1`}>YTD Net Income</p>
                             <p className={`text-xl font-bold ${ytdNet >= 0 ? 'text-teal-400' : 'text-orange-400'}`}>{formatCurrency(ytdNet)}</p>
+                          </div>
+                          <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4 text-center">
+                            <p className="text-[10px] font-semibold text-blue-400/70 uppercase tracking-wider mb-1">YTD Distributions</p>
+                            <p className="text-xl font-bold text-blue-400">{formatCurrency(ytdDistributions)}</p>
                           </div>
                         </div>
 
@@ -885,35 +917,45 @@ export default function DulinProperties() {
                           </div>
                           <div className="divide-y divide-white/5">
                             {/* Header */}
-                            <div className="grid grid-cols-4 gap-2 px-4 py-2 text-[10px] font-semibold text-white/30 uppercase tracking-wider">
+                            <div className="grid grid-cols-6 gap-2 px-4 py-2 text-[10px] font-semibold text-white/30 uppercase tracking-wider">
                               <span>Month</span>
                               <span className="text-right">Income</span>
+                              <span className="text-right">Mgmt Fees</span>
                               <span className="text-right">Expenses</span>
                               <span className="text-right">Net</span>
+                              <span className="text-right">Distributed</span>
                             </div>
                             {months.map(m => (
                               <div key={m.monthStr}
-                                className={`grid grid-cols-4 gap-2 px-4 py-2.5 ${m.isCurrent ? 'bg-teal-500/5' : ''} ${!m.isPast ? 'opacity-30' : ''}`}>
+                                className={`grid grid-cols-6 gap-2 px-4 py-2.5 ${m.isCurrent ? 'bg-teal-500/5' : ''} ${!m.isPast ? 'opacity-30' : ''}`}>
                                 <span className={`text-sm font-medium ${m.isCurrent ? 'text-teal-400' : 'text-white/70'}`}>
                                   {m.monthLabel}{m.isCurrent ? ' •' : ''}
                                 </span>
                                 <span className="text-sm text-right text-emerald-400/80">
                                   {m.isPast && m.income > 0 ? formatCurrency(m.income) : m.isPast ? '—' : ''}
                                 </span>
+                                <span className="text-sm text-right text-yellow-400/60">
+                                  {m.isPast && m.mgmt > 0 ? formatCurrency(m.mgmt) : m.isPast ? '—' : ''}
+                                </span>
                                 <span className="text-sm text-right text-red-400/70">
-                                  {m.isPast && m.expenses > 0 ? formatCurrency(m.expenses) : m.isPast ? '—' : ''}
+                                  {m.isPast && m.opex > 0 ? formatCurrency(m.opex) : m.isPast ? '—' : ''}
                                 </span>
                                 <span className={`text-sm text-right font-medium ${m.isPast ? (m.net >= 0 ? 'text-teal-400' : 'text-orange-400') : ''}`}>
                                   {m.isPast && (m.income > 0 || m.expenses > 0) ? formatCurrency(m.net) : m.isPast ? '—' : ''}
                                 </span>
+                                <span className="text-sm text-right text-blue-400/60">
+                                  {m.isPast && m.dist > 0 ? formatCurrency(m.dist) : m.isPast ? '—' : ''}
+                                </span>
                               </div>
                             ))}
                             {/* YTD total row */}
-                            <div className="grid grid-cols-4 gap-2 px-4 py-3 bg-white/[0.03] border-t border-white/10">
+                            <div className="grid grid-cols-6 gap-2 px-4 py-3 bg-white/[0.03] border-t border-white/10">
                               <span className="text-sm font-bold text-white">YTD Total</span>
                               <span className="text-sm text-right font-bold text-emerald-400">{formatCurrency(ytdRent)}</span>
-                              <span className="text-sm text-right font-bold text-red-400">{formatCurrency(ytdExpenses)}</span>
+                              <span className="text-sm text-right font-bold text-yellow-400/70">{formatCurrency(ytdMgmtFees)}</span>
+                              <span className="text-sm text-right font-bold text-red-400">{formatCurrency(ytdOpEx)}</span>
                               <span className={`text-sm text-right font-bold ${ytdNet >= 0 ? 'text-teal-400' : 'text-orange-400'}`}>{formatCurrency(ytdNet)}</span>
+                              <span className="text-sm text-right font-bold text-blue-400">{formatCurrency(ytdDistributions)}</span>
                             </div>
                           </div>
                         </div>

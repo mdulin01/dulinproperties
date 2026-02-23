@@ -143,17 +143,19 @@ export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDe
   };
 
   // Summary stats: regular expenses + recurring template expected amounts
+  // Exclude owner distributions from expense totals (they are cash flows, not costs)
+  const operatingExpenses = useMemo(() => regularExpenses.filter(e => e.category !== 'owner-distribution'), [regularExpenses]);
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentYearStr = currentYear.toString();
   const currentMonth = `${currentYear}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const yearStart = new Date(currentYear, 0, 1);
 
-  const recordedTotal = regularExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-  const recordedYtd = regularExpenses
+  const recordedTotal = operatingExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+  const recordedYtd = operatingExpenses
     .filter(e => (e.date || '').startsWith(currentYearStr))
     .reduce((sum, e) => sum + (e.amount || 0), 0);
-  const recordedMonth = regularExpenses
+  const recordedMonth = operatingExpenses
     .filter(e => (e.date || '').startsWith(currentMonth))
     .reduce((sum, e) => sum + (e.amount || 0), 0);
 

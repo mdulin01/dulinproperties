@@ -21,6 +21,7 @@ export const ownerDisplayNames = {
 
 // Expense report categories for uploaded management company reports
 export const expenseReportCategories = [
+  { value: 'owner-distribution', label: 'Owner Distribution', emoji: '💸' },
   { value: 'management-fee', label: 'Management Fee', emoji: '🏢' },
   { value: 'repair', label: 'Repair', emoji: '🔧' },
   { value: 'maintenance', label: 'Maintenance', emoji: '🔩' },
@@ -85,6 +86,7 @@ export const documentTypes = [
 
 // Expense categories
 export const expenseCategories = [
+  { value: 'owner-distribution', label: 'Owner Distribution', emoji: '💸' },
   { value: 'management-fee', label: 'Management Fee', emoji: '🏢' },
   { value: 'repair', label: 'Repair', emoji: '🔧' },
   { value: 'insurance', label: 'Insurance', emoji: '🛡️' },
