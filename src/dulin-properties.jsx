@@ -186,7 +186,7 @@ export default function DulinProperties() {
     addRentPayment, updateRentPayment, deleteRentPayment, bulkDeleteRentPayments,
   } = rentHook;
 
-  // Pass db directly — hook saves to Firestore internally, no ref indirection
+  // Pass db directly â hook saves to Firestore internally, no ref indirection
   const expensesHook = useExpenses(db, currentUser, showToast);
   const {
     expenses, setExpenses,
@@ -345,7 +345,7 @@ export default function DulinProperties() {
   useEffect(() => { saveRentRef.current = saveRentToFirestore; }, [saveRentToFirestore]);
 
   // NOTE: Expense saving is now handled directly inside the useExpenses hook.
-  // No more saveExpensesRef indirection — the hook calls setDoc internally.
+  // No more saveExpensesRef indirection â the hook calls setDoc internally.
 
   // ========== FIRESTORE LOAD (onSnapshot) ==========
   useEffect(() => {
@@ -486,7 +486,7 @@ export default function DulinProperties() {
       try {
         const expensesDocRef = doc(db, 'rentalData', 'expenses');
         await runTransaction(db, async (transaction) => {
-          // Read the ACTUAL Firestore data (not React state — avoids stale closures)
+          // Read the ACTUAL Firestore data (not React state â avoids stale closures)
           const docSnap = await transaction.get(expensesDocRef);
           const data = docSnap.exists() ? docSnap.data() : {};
           const firestoreExpenses = data.expenses || [];
@@ -496,7 +496,7 @@ export default function DulinProperties() {
           const newExpenses = autoCreateRecurringExpenses(firestoreExpenses);
           if (newExpenses.length === 0) {
             logger.log('[expenses] Auto-creation: no new expenses needed');
-            return; // Nothing to do — transaction aborts cleanly
+            return; // Nothing to do â transaction aborts cleanly
           }
 
           const updated = [...firestoreExpenses, ...newExpenses];
@@ -523,6 +523,148 @@ export default function DulinProperties() {
     }, 2000);
     return () => clearTimeout(timer);
   }, [user, expenses.length > 0]);
+
+  // ========== ONE-TIME DATA FIX (Jan 2026 statement reconciliation) ==========
+  // Fixes: orphaned rent records, Taos/Pueblo mixup, missing late fees, 5490 Questa monthlyRent
+  // TODO: Remove this block after it has run once successfully
+  const janFixDoneRef = useRef(false);
+  useEffect(() => {
+    if (!user || properties.length === 0 || rentPayments.length === 0 || janFixDoneRef.current) return;
+    const timer = setTimeout(async () => {
+      if (janFixDoneRef.current) return;
+      janFixDoneRef.current = true;
+
+      try {
+        logger.log('[migration] Starting Jan 2026 statement reconciliation...');
+
+        const propByName = {};
+        properties.forEach(p => {
+          propByName[p.name.toLowerCase().trim()] = p;
+          if (p.street) propByName[p.street.toLowerCase().trim()] = p;
+        });
+
+        const findProp = (search) => {
+          const s = search.toLowerCase().trim();
+          return properties.find(p =>
+            p.name.toLowerCase().includes(s) ||
+            (p.street && p.street.toLowerCase().includes(s))
+          );
+        };
+
+        // FIX 1: Set monthlyRent on 5490 Questa
+        const questa5490 = findProp('5490 questa');
+        let propertiesChanged = false;
+        const updatedProperties = properties.map(p => {
+          if (questa5490 && String(p.id) === String(questa5490.id) && (!p.monthlyRent || parseFloat(p.monthlyRent) === 0)) {
+            propertiesChanged = true;
+            logger.log('[migration] Setting 5490 Questa monthlyRent to 900');
+            return { ...p, monthlyRent: '900' };
+          }
+          return p;
+        });
+
+        const s11thB = updatedProperties.find(p => p.name && p.name.toLowerCase().includes('1329') && p.name.toLowerCase().includes('b'));
+        if (s11thB && (!s11thB.monthlyRent || parseFloat(s11thB.monthlyRent) === 0)) {
+          const idx = updatedProperties.findIndex(p => String(p.id) === String(s11thB.id));
+          if (idx >= 0) {
+            propertiesChanged = true;
+            logger.log('[migration] Setting 1329 S 11th St B monthlyRent to 725');
+            updatedProperties[idx] = { ...updatedProperties[idx], monthlyRent: '725' };
+          }
+        }
+
+        if (propertiesChanged) {
+          setProperties(updatedProperties);
+          savePropertiesRef.current(updatedProperties);
+        }
+
+        // FIX 2: Relink orphaned rent records
+        const encino5102 = findProp('5102 encino');
+        const encino5220 = findProp('5220 encino');
+        const taos = findProp('5297 taos');
+        const pueblo5297 = findProp('5297 pueblo');
+
+        const svProps = properties.filter(p => p.name.toLowerCase().includes('sunset villa') || p.name.toLowerCase().includes('ruidosa'));
+        const sv215 = svProps.find(p => p.name.includes('215') || (p.street && p.street.includes('215')));
+        const sv220 = svProps.find(p => p.name.includes('220') || (p.street && p.street.includes('220')));
+        const sv106 = svProps.find(p => p.name.includes('106') || (p.street && p.street.includes('106')));
+
+        let rentChanged = false;
+        const updatedRent = rentPayments.map(r => {
+          const tenant = (r.tenantName || '').toLowerCase();
+          const amount = parseFloat(r.amount) || 0;
+          const hasProperty = r.propertyId && r.propertyId !== '' && r.propertyId !== 'undefined';
+
+          if (tenant.includes('renate evans') && !hasProperty && encino5102) {
+            rentChanged = true;
+            return { ...r, propertyId: String(encino5102.id), propertyName: encino5102.name };
+          }
+          if (tenant.includes('estela contreras') && !hasProperty && encino5220) {
+            rentChanged = true;
+            return { ...r, propertyId: String(encino5220.id), propertyName: encino5220.name };
+          }
+          if ((tenant.includes('alika') || tenant.includes('d2a7') || tenant.includes('alexander')) && !hasProperty && sv215) {
+            rentChanged = true;
+            return { ...r, propertyId: String(sv215.id), propertyName: sv215.name };
+          }
+          if (!hasProperty && !tenant && sv215 && (r.datePaid || '').startsWith('2026-01') &&
+              ((amount === 320 && (r.datePaid || '').includes('01-08')) ||
+               (amount === 400 && (r.datePaid || '').includes('01-14')))) {
+            rentChanged = true;
+            return { ...r, propertyId: String(sv215.id), propertyName: sv215.name, tenantName: r.tenantName || 'Alika K. Alexander' };
+          }
+          if (tenant.includes('patrick roach') && !hasProperty && sv220) {
+            rentChanged = true;
+            return { ...r, propertyId: String(sv220.id), propertyName: sv220.name };
+          }
+          if (tenant.includes('dan inguanzo') && !hasProperty && sv106) {
+            rentChanged = true;
+            return { ...r, propertyId: String(sv106.id), propertyName: sv106.name };
+          }
+
+          // FIX 3a: Byron Plummer 1329 A -> B
+          const s11thA = properties.find(p => p.name && p.name.toLowerCase().includes('1329') && p.name.toLowerCase().includes(' a'));
+          const s11thBProp = properties.find(p => p.name && p.name.toLowerCase().includes('1329') && p.name.toLowerCase().includes(' b'));
+          if (tenant.includes('byron') && s11thA && s11thBProp && String(r.propertyId) === String(s11thA.id)) {
+            rentChanged = true;
+            return { ...r, propertyId: String(s11thBProp.id), propertyName: s11thBProp.name };
+          }
+
+          // FIX 3b: Linda Gray Pueblo -> Taos
+          if (tenant.includes('linda gray') && taos && pueblo5297 && String(r.propertyId) === String(pueblo5297.id)) {
+            rentChanged = true;
+            return { ...r, propertyId: String(taos.id), propertyName: taos.name };
+          }
+
+          // FIX 4: $5 -> $10 late fee 5350 Pueblo
+          const pueblo5350 = findProp('5350 pueblo');
+          if (pueblo5350 && String(r.propertyId) === String(pueblo5350.id) && amount === 5 && (r.datePaid || '').startsWith('2026-01-06')) {
+            rentChanged = true;
+            return { ...r, amount: '10', notes: (r.notes || '') + ' [Fixed: was $5, corrected to $10 per-day late fee per statement]' };
+          }
+
+          return r;
+        });
+
+        // FIX 5: Add missing $160 late fee for Ruidosa #215
+        const has160Fee = updatedRent.some(r => sv215 && String(r.propertyId) === String(sv215.id) && parseFloat(r.amount) === 160 && (r.datePaid || '').startsWith('2026-01-21'));
+        if (!has160Fee && sv215) {
+          rentChanged = true;
+          updatedRent.push({
+            id: 'migration-ruidosa215-latefee-' + Date.now(), propertyId: String(sv215.id), propertyName: sv215.name,
+            tenantName: 'Alika K. Alexander', amount: '160', datePaid: '2026-01-21', month: '2026-01',
+            status: 'paid', notes: 'Per-day late fee ($10/day, 01/06-01/21). Added from statement reconciliation.', createdAt: new Date().toISOString(),
+          });
+        }
+
+        if (rentChanged) { setRentPayments(updatedRent); saveRentRef.current(updatedRent); }
+        logger.log('[migration] Jan 2026 reconciliation complete. Properties changed:', propertiesChanged, 'Rent changed:', rentChanged);
+      } catch (error) {
+        logger.error('[migration] Jan 2026 reconciliation FAILED:', error);
+      }
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [user, properties.length > 0, rentPayments.length > 0]);
 
   // ========== PHOTO UPLOAD HELPER ==========
   const uploadPhoto = async (file, prefix = 'rentals') => {
@@ -656,12 +798,12 @@ export default function DulinProperties() {
 
   // Mobile section dropdown
   const allSections = [
-    { id: 'dashboard', label: 'Dashboard', emoji: '📊' },
-    { id: 'rentals', label: 'Properties', emoji: '🏠' },
-    { id: 'tenants', label: 'Tenants', emoji: '👤' },
-    { id: 'rent', label: 'Rent', emoji: '💰' },
-    { id: 'expenses', label: 'Expenses', emoji: '💸' },
-    { id: 'documents', label: 'Documents', emoji: '📄' },
+    { id: 'dashboard', label: 'Dashboard', emoji: 'ð' },
+    { id: 'rentals', label: 'Properties', emoji: 'ð ' },
+    { id: 'tenants', label: 'Tenants', emoji: 'ð¤' },
+    { id: 'rent', label: 'Rent', emoji: 'ð°' },
+    { id: 'expenses', label: 'Expenses', emoji: 'ð¸' },
+    { id: 'documents', label: 'Documents', emoji: 'ð' },
   ];
   const activeSectionInfo = allSections.find(s => s.id === activeSection) || allSections[0];
 
@@ -757,12 +899,12 @@ export default function DulinProperties() {
               {/* Desktop nav tabs */}
               <nav className="hidden md:flex items-center gap-1 ml-6">
                 {[
-                  { id: 'dashboard', label: 'Dashboard', emoji: '📊' },
-                  { id: 'rentals', label: 'Properties', emoji: '🏠' },
-                  { id: 'tenants', label: 'Tenants', emoji: '👤' },
-                  { id: 'rent', label: 'Rents', emoji: '💰' },
-                  { id: 'expenses', label: 'Expenses', emoji: '💸' },
-                  { id: 'documents', label: 'Documents', emoji: '📄' },
+                  { id: 'dashboard', label: 'Dashboard', emoji: 'ð' },
+                  { id: 'rentals', label: 'Properties', emoji: 'ð ' },
+                  { id: 'tenants', label: 'Tenants', emoji: 'ð¤' },
+                  { id: 'rent', label: 'Rents', emoji: 'ð°' },
+                  { id: 'expenses', label: 'Expenses', emoji: 'ð¸' },
+                  { id: 'documents', label: 'Documents', emoji: 'ð' },
                 ].map(tab => (
                   <button
                     key={tab.id}
@@ -897,7 +1039,7 @@ export default function DulinProperties() {
                             <p className="text-[10px] font-semibold text-red-400/70 uppercase tracking-wider mb-1">YTD Expenses</p>
                             <p className="text-xl font-bold text-red-400">{formatCurrency(ytdTotalExpenses)}</p>
                             <p className="text-[9px] text-white/30 mt-1">
-                              Mgmt: {formatCurrency(ytdMgmtFees)} · OpEx: {formatCurrency(ytdOpEx)}
+                              Mgmt: {formatCurrency(ytdMgmtFees)} Â· OpEx: {formatCurrency(ytdOpEx)}
                             </p>
                           </div>
                           <div className={`${ytdNet >= 0 ? 'bg-teal-500/10 border-teal-500/20' : 'bg-orange-500/10 border-orange-500/20'} border rounded-2xl p-4 text-center`}>
@@ -929,22 +1071,22 @@ export default function DulinProperties() {
                               <div key={m.monthStr}
                                 className={`grid grid-cols-6 gap-2 px-4 py-2.5 ${m.isCurrent ? 'bg-teal-500/5' : ''} ${!m.isPast ? 'opacity-30' : ''}`}>
                                 <span className={`text-sm font-medium ${m.isCurrent ? 'text-teal-400' : 'text-white/70'}`}>
-                                  {m.monthLabel}{m.isCurrent ? ' •' : ''}
+                                  {m.monthLabel}{m.isCurrent ? ' â¢' : ''}
                                 </span>
                                 <span className="text-sm text-right text-emerald-400/80">
-                                  {m.isPast && m.income > 0 ? formatCurrency(m.income) : m.isPast ? '—' : ''}
+                                  {m.isPast && m.income > 0 ? formatCurrency(m.income) : m.isPast ? 'â' : ''}
                                 </span>
                                 <span className="text-sm text-right text-yellow-400/60">
-                                  {m.isPast && m.mgmt > 0 ? formatCurrency(m.mgmt) : m.isPast ? '—' : ''}
+                                  {m.isPast && m.mgmt > 0 ? formatCurrency(m.mgmt) : m.isPast ? 'â' : ''}
                                 </span>
                                 <span className="text-sm text-right text-red-400/70">
-                                  {m.isPast && m.opex > 0 ? formatCurrency(m.opex) : m.isPast ? '—' : ''}
+                                  {m.isPast && m.opex > 0 ? formatCurrency(m.opex) : m.isPast ? 'â' : ''}
                                 </span>
                                 <span className={`text-sm text-right font-medium ${m.isPast ? (m.net >= 0 ? 'text-teal-400' : 'text-orange-400') : ''}`}>
-                                  {m.isPast && (m.income > 0 || m.expenses > 0) ? formatCurrency(m.net) : m.isPast ? '—' : ''}
+                                  {m.isPast && (m.income > 0 || m.expenses > 0) ? formatCurrency(m.net) : m.isPast ? 'â' : ''}
                                 </span>
                                 <span className="text-sm text-right text-blue-400/60">
-                                  {m.isPast && m.dist > 0 ? formatCurrency(m.dist) : m.isPast ? '—' : ''}
+                                  {m.isPast && m.dist > 0 ? formatCurrency(m.dist) : m.isPast ? 'â' : ''}
                                 </span>
                               </div>
                             ))}
@@ -972,7 +1114,7 @@ export default function DulinProperties() {
                           {vacantProperties.map(p => (
                             <button key={p.id} onClick={() => { setActiveSection('rentals'); setSelectedProperty(p); }}
                               className="block text-sm text-white/70 hover:text-white transition py-1">
-                              {p.emoji || '🏠'} {p.name}
+                              {p.emoji || 'ð '} {p.name}
                             </button>
                           ))}
                         </div>
@@ -983,11 +1125,11 @@ export default function DulinProperties() {
                           {leaseExpiredProperties.map(p => {
                             const tenants = getPropertyTenants(p);
                             const earliestEnd = tenants.map(t => t.leaseEnd).filter(Boolean).sort()[0];
-                            const endLabel = earliestEnd ? ` — ${new Date(earliestEnd + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}` : '';
+                            const endLabel = earliestEnd ? ` â ${new Date(earliestEnd + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}` : '';
                             return (
                               <button key={p.id} onClick={() => { setActiveSection('rentals'); setSelectedProperty(p); }}
                                 className="block text-sm text-white/70 hover:text-white transition py-1">
-                                {p.emoji || '🏠'} {p.name}<span className="text-orange-400/70">{endLabel}</span>
+                                {p.emoji || 'ð '} {p.name}<span className="text-orange-400/70">{endLabel}</span>
                               </button>
                             );
                           })}
@@ -1005,7 +1147,7 @@ export default function DulinProperties() {
                             return (
                               <button key={p.id} onClick={() => { setActiveSection('rentals'); setSelectedProperty(p); }}
                                 className="block text-sm text-white/70 hover:text-white transition py-1">
-                                {p.emoji || '🏠'} {p.name} <span className="text-yellow-400/70">— {days}d left</span>
+                                {p.emoji || 'ð '} {p.name} <span className="text-yellow-400/70">â {days}d left</span>
                               </button>
                             );
                           })}
@@ -1133,7 +1275,7 @@ export default function DulinProperties() {
                           ))}
                           {properties.length === 0 && (
                             <div className="text-center py-16">
-                              <p className="text-4xl mb-3">🏠</p>
+                              <p className="text-4xl mb-3">ð </p>
                               <p className="text-white/40">No properties yet</p>
                               <button onClick={() => setShowNewPropertyModal('create')} className="mt-3 px-4 py-2 bg-teal-500 text-white rounded-xl text-sm hover:bg-teal-600 transition">
                                 Add Your First Property
@@ -1259,9 +1401,9 @@ export default function DulinProperties() {
                   <div className="flex gap-1.5 mb-4 items-center justify-between sticky top-[57px] z-20 bg-slate-900/95 backdrop-blur-md py-3 -mx-4 px-4">
                     <div className="flex gap-1.5">
                       {[
-                        { id: 'byType', emoji: '📁' },
-                        { id: 'byProperty', emoji: '🏠' },
-                        { id: 'all', emoji: '📄' },
+                        { id: 'byType', emoji: 'ð' },
+                        { id: 'byProperty', emoji: 'ð ' },
+                        { id: 'all', emoji: 'ð' },
                       ].map(tab => (
                         <button key={tab.id} onClick={() => setDocumentViewMode(tab.id)}
                           className={`px-3 md:px-4 py-2 rounded-xl font-medium transition text-base md:text-lg text-center ${
@@ -1298,7 +1440,7 @@ export default function DulinProperties() {
                       ))}
                       {documents.length === 0 && (
                         <div className="text-center py-16">
-                          <p className="text-4xl mb-3">📄</p>
+                          <p className="text-4xl mb-3">ð</p>
                           <p className="text-white/40">No documents yet</p>
                           <button onClick={() => setShowAddDocumentModal('create')} className="mt-3 px-4 py-2 bg-amber-500 text-white rounded-xl text-sm hover:bg-amber-600 transition">
                             Upload Your First Document
@@ -1316,7 +1458,7 @@ export default function DulinProperties() {
                         if (propDocs.length === 0) return null;
                         return (
                           <div key={prop.id}>
-                            <h3 className="text-sm font-semibold text-white/60 mb-2">{prop.emoji || '🏠'} {prop.name}</h3>
+                            <h3 className="text-sm font-semibold text-white/60 mb-2">{prop.emoji || 'ð '} {prop.name}</h3>
                             <div className="space-y-2">
                               {propDocs.map(docItem => (
                                 <DocumentCard
@@ -1335,7 +1477,7 @@ export default function DulinProperties() {
                       {/* Unlinked docs */}
                       {documents.filter(d => !d.propertyId).length > 0 && (
                         <div>
-                          <h3 className="text-sm font-semibold text-white/60 mb-2">📁 General</h3>
+                          <h3 className="text-sm font-semibold text-white/60 mb-2">ð General</h3>
                           <div className="space-y-2">
                             {documents.filter(d => !d.propertyId).map(docItem => (
                               <DocumentCard
@@ -1387,9 +1529,9 @@ export default function DulinProperties() {
                   {/* Sub-nav */}
                   <div className="flex gap-1.5 mb-4 items-center justify-start sticky top-[57px] z-20 bg-slate-900/95 backdrop-blur-md py-3 -mx-4 px-4">
                     {[
-                      { id: 'transactions', emoji: '💰' },
-                      { id: 'summary', emoji: '📈' },
-                      { id: 'byProperty', emoji: '🏠' },
+                      { id: 'transactions', emoji: 'ð°' },
+                      { id: 'summary', emoji: 'ð' },
+                      { id: 'byProperty', emoji: 'ð ' },
                     ].map(tab => (
                       <button key={tab.id} onClick={() => setFinancialViewMode(tab.id)}
                         className={`flex-1 md:flex-none px-3 md:px-4 py-2 rounded-xl font-medium transition text-base md:text-lg text-center ${
@@ -1429,7 +1571,7 @@ export default function DulinProperties() {
                           ))}
                         {transactions.length === 0 && (
                           <div className="text-center py-16">
-                            <p className="text-4xl mb-3">💰</p>
+                            <p className="text-4xl mb-3">ð°</p>
                             <p className="text-white/40">No transactions yet</p>
                             <button onClick={() => setShowAddTransactionModal('create')} className="mt-3 px-4 py-2 bg-emerald-500 text-white rounded-xl text-sm hover:bg-emerald-600 transition">
                               Log Your First Transaction
@@ -1462,7 +1604,7 @@ export default function DulinProperties() {
                         const expenses = propTxns.filter(t => t.type === 'expense').reduce((s, t) => s + (t.amount || 0), 0);
                         return (
                           <div key={prop.id} className="bg-white/[0.05] border border-white/[0.08] rounded-2xl p-4">
-                            <h3 className="font-semibold text-white mb-2">{prop.emoji || '🏠'} {prop.name}</h3>
+                            <h3 className="font-semibold text-white mb-2">{prop.emoji || 'ð '} {prop.name}</h3>
                             <div className="grid grid-cols-3 gap-2 text-sm">
                               <div><span className="text-white/40">Income:</span> <span className="text-emerald-400">{formatCurrency(income)}</span></div>
                               <div><span className="text-white/40">Expenses:</span> <span className="text-red-400">{formatCurrency(expenses)}</span></div>
@@ -1710,13 +1852,13 @@ export default function DulinProperties() {
               const incomeItems = items.filter(i => i.flowType === 'income');
               const expenseItems = items.filter(i => i.flowType !== 'income');
 
-              // Route expenses → Expenses section
+              // Route expenses â Expenses section
               for (const item of expenseItems) {
                 addExpense({ ...item, id: Date.now().toString() + Math.random().toString(36).slice(2, 6), createdAt: new Date().toISOString(), createdBy: currentUser });
                 await new Promise(r => setTimeout(r, 50));
               }
 
-              // Route income → Rent section
+              // Route income â Rent section
               for (const item of incomeItems) {
                 const month = item.date ? item.date.substring(0, 7) : item.reportMonth || '';
                 addRentPayment({
@@ -1811,11 +1953,11 @@ export default function DulinProperties() {
                   style={{ animation: 'fabGridIn 0.15s ease-out both' }}>
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { action: () => setShowAddTaskModal('create'), icon: '✅', label: 'Task', gradient: 'from-blue-400 to-indigo-500' },
-                      { action: () => setShowAddRentModal('create'), icon: '💰', label: 'Rent', gradient: 'from-emerald-400 to-green-500' },
-                      { action: () => setShowAddExpenseModal('create'), icon: '💸', label: 'Expense', gradient: 'from-red-400 to-rose-500' },
-                      { action: () => setShowAddDocumentModal('create'), icon: '📄', label: 'Document', gradient: 'from-amber-400 to-orange-500' },
-                      { action: () => setShowSharedListModal('create'), icon: '📋', label: 'List', gradient: 'from-emerald-400 to-teal-500' },
+                      { action: () => setShowAddTaskModal('create'), icon: 'â', label: 'Task', gradient: 'from-blue-400 to-indigo-500' },
+                      { action: () => setShowAddRentModal('create'), icon: 'ð°', label: 'Rent', gradient: 'from-emerald-400 to-green-500' },
+                      { action: () => setShowAddExpenseModal('create'), icon: 'ð¸', label: 'Expense', gradient: 'from-red-400 to-rose-500' },
+                      { action: () => setShowAddDocumentModal('create'), icon: 'ð', label: 'Document', gradient: 'from-amber-400 to-orange-500' },
+                      { action: () => setShowSharedListModal('create'), icon: 'ð', label: 'List', gradient: 'from-emerald-400 to-teal-500' },
                     ].map((item, idx) => (
                       <button key={item.label} onClick={() => { setShowAddNewMenu(false); item.action(); }}
                         className="flex flex-col items-center justify-center gap-1.5 py-2.5 rounded-xl hover:bg-white/10 transition active:scale-95"
@@ -1853,11 +1995,11 @@ export default function DulinProperties() {
                   style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 132px)', animation: 'fabGridUp 0.2s cubic-bezier(0.16,1,0.3,1) both', transformOrigin: 'bottom right' }}>
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { action: () => setShowAddTaskModal('create'), icon: '✅', label: 'Task', gradient: 'from-blue-400 to-indigo-500' },
-                      { action: () => setShowAddRentModal('create'), icon: '💰', label: 'Rent', gradient: 'from-emerald-400 to-green-500' },
-                      { action: () => setShowAddExpenseModal('create'), icon: '💸', label: 'Expense', gradient: 'from-red-400 to-rose-500' },
-                      { action: () => setShowAddDocumentModal('create'), icon: '📄', label: 'Document', gradient: 'from-amber-400 to-orange-500' },
-                      { action: () => setShowSharedListModal('create'), icon: '📋', label: 'List', gradient: 'from-emerald-400 to-teal-500' },
+                      { action: () => setShowAddTaskModal('create'), icon: 'â', label: 'Task', gradient: 'from-blue-400 to-indigo-500' },
+                      { action: () => setShowAddRentModal('create'), icon: 'ð°', label: 'Rent', gradient: 'from-emerald-400 to-green-500' },
+                      { action: () => setShowAddExpenseModal('create'), icon: 'ð¸', label: 'Expense', gradient: 'from-red-400 to-rose-500' },
+                      { action: () => setShowAddDocumentModal('create'), icon: 'ð', label: 'Document', gradient: 'from-amber-400 to-orange-500' },
+                      { action: () => setShowSharedListModal('create'), icon: 'ð', label: 'List', gradient: 'from-emerald-400 to-teal-500' },
                     ].map((item, idx) => {
                       const row = Math.floor(idx / 3);
                       const delay = (1 - row) * 0.04 + (idx % 3) * 0.015;
@@ -1881,15 +2023,15 @@ export default function DulinProperties() {
 
             {/* Nav bar */}
             <div className="relative bg-slate-900 border-t border-white/10" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-              {/* Tab buttons — all 6 sections */}
+              {/* Tab buttons â all 6 sections */}
               <div className="flex items-end justify-around px-1 pt-1 pb-1">
                 {[
-                  { id: 'dashboard', label: 'Home', emoji: '📊', gradient: 'from-purple-500 to-violet-500' },
-                  { id: 'rentals', label: 'Props', emoji: '🏠', gradient: 'from-teal-400 to-cyan-500' },
-                  { id: 'tenants', label: 'Tenants', emoji: '👤', gradient: 'from-blue-400 to-indigo-500' },
-                  { id: 'rent', label: 'Rent', emoji: '💰', gradient: 'from-emerald-400 to-green-500' },
-                  { id: 'expenses', label: 'Costs', emoji: '💸', gradient: 'from-red-400 to-rose-500' },
-                  { id: 'documents', label: 'Docs', emoji: '📄', gradient: 'from-amber-400 to-orange-500' },
+                  { id: 'dashboard', label: 'Home', emoji: 'ð', gradient: 'from-purple-500 to-violet-500' },
+                  { id: 'rentals', label: 'Props', emoji: 'ð ', gradient: 'from-teal-400 to-cyan-500' },
+                  { id: 'tenants', label: 'Tenants', emoji: 'ð¤', gradient: 'from-blue-400 to-indigo-500' },
+                  { id: 'rent', label: 'Rent', emoji: 'ð°', gradient: 'from-emerald-400 to-green-500' },
+                  { id: 'expenses', label: 'Costs', emoji: 'ð¸', gradient: 'from-red-400 to-rose-500' },
+                  { id: 'documents', label: 'Docs', emoji: 'ð', gradient: 'from-amber-400 to-orange-500' },
                 ].map((section) => (
                   <button
                     key={section.id}
@@ -1914,7 +2056,7 @@ export default function DulinProperties() {
               </div>
             </div>
 
-            {/* FAB — floating above bottom nav on right side */}
+            {/* FAB â floating above bottom nav on right side */}
             {isOwner && (
               <button
                 onClick={() => setShowAddNewMenu(!showAddNewMenu)}
