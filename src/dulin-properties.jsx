@@ -186,7 +186,7 @@ export default function DulinProperties() {
     addRentPayment, updateRentPayment, deleteRentPayment, bulkDeleteRentPayments,
   } = rentHook;
 
-  // Pass db directly â hook saves to Firestore internally, no ref indirection
+  // Pass db directly — hook saves to Firestore internally, no ref indirection
   const expensesHook = useExpenses(db, currentUser, showToast);
   const {
     expenses, setExpenses,
@@ -345,7 +345,7 @@ export default function DulinProperties() {
   useEffect(() => { saveRentRef.current = saveRentToFirestore; }, [saveRentToFirestore]);
 
   // NOTE: Expense saving is now handled directly inside the useExpenses hook.
-  // No more saveExpensesRef indirection â the hook calls setDoc internally.
+  // No more saveExpensesRef indirection — the hook calls setDoc internally.
 
   // ========== FIRESTORE LOAD (onSnapshot) ==========
   useEffect(() => {
@@ -486,7 +486,7 @@ export default function DulinProperties() {
       try {
         const expensesDocRef = doc(db, 'rentalData', 'expenses');
         await runTransaction(db, async (transaction) => {
-          // Read the ACTUAL Firestore data (not React state â avoids stale closures)
+          // Read the ACTUAL Firestore data (not React state — avoids stale closures)
           const docSnap = await transaction.get(expensesDocRef);
           const data = docSnap.exists() ? docSnap.data() : {};
           const firestoreExpenses = data.expenses || [];
@@ -496,7 +496,7 @@ export default function DulinProperties() {
           const newExpenses = autoCreateRecurringExpenses(firestoreExpenses);
           if (newExpenses.length === 0) {
             logger.log('[expenses] Auto-creation: no new expenses needed');
-            return; // Nothing to do â transaction aborts cleanly
+            return; // Nothing to do — transaction aborts cleanly
           }
 
           const updated = [...firestoreExpenses, ...newExpenses];
@@ -798,12 +798,12 @@ export default function DulinProperties() {
 
   // Mobile section dropdown
   const allSections = [
-    { id: 'dashboard', label: 'Dashboard', emoji: 'ð' },
-    { id: 'rentals', label: 'Properties', emoji: 'ð ' },
-    { id: 'tenants', label: 'Tenants', emoji: 'ð¤' },
-    { id: 'rent', label: 'Rent', emoji: 'ð°' },
-    { id: 'expenses', label: 'Expenses', emoji: 'ð¸' },
-    { id: 'documents', label: 'Documents', emoji: 'ð' },
+    { id: 'dashboard', label: 'Dashboard', emoji: '📊' },
+    { id: 'rentals', label: 'Properties', emoji: '🏠' },
+    { id: 'tenants', label: 'Tenants', emoji: '👤' },
+    { id: 'rent', label: 'Rent', emoji: '💰' },
+    { id: 'expenses', label: 'Expenses', emoji: '💸' },
+    { id: 'documents', label: 'Documents', emoji: '📄' },
   ];
   const activeSectionInfo = allSections.find(s => s.id === activeSection) || allSections[0];
 
@@ -899,12 +899,12 @@ export default function DulinProperties() {
               {/* Desktop nav tabs */}
               <nav className="hidden md:flex items-center gap-1 ml-6">
                 {[
-                  { id: 'dashboard', label: 'Dashboard', emoji: 'ð' },
-                  { id: 'rentals', label: 'Properties', emoji: 'ð ' },
-                  { id: 'tenants', label: 'Tenants', emoji: 'ð¤' },
-                  { id: 'rent', label: 'Rents', emoji: 'ð°' },
-                  { id: 'expenses', label: 'Expenses', emoji: 'ð¸' },
-                  { id: 'documents', label: 'Documents', emoji: 'ð' },
+                  { id: 'dashboard', label: 'Dashboard', emoji: '📊' },
+                  { id: 'rentals', label: 'Properties', emoji: '🏠' },
+                  { id: 'tenants', label: 'Tenants', emoji: '👤' },
+                  { id: 'rent', label: 'Rents', emoji: '💰' },
+                  { id: 'expenses', label: 'Expenses', emoji: '💸' },
+                  { id: 'documents', label: 'Documents', emoji: '📄' },
                 ].map(tab => (
                   <button
                     key={tab.id}
@@ -1039,7 +1039,7 @@ export default function DulinProperties() {
                             <p className="text-[10px] font-semibold text-red-400/70 uppercase tracking-wider mb-1">YTD Expenses</p>
                             <p className="text-xl font-bold text-red-400">{formatCurrency(ytdTotalExpenses)}</p>
                             <p className="text-[9px] text-white/30 mt-1">
-                              Mgmt: {formatCurrency(ytdMgmtFees)} Â· OpEx: {formatCurrency(ytdOpEx)}
+                              Mgmt: {formatCurrency(ytdMgmtFees)} · OpEx: {formatCurrency(ytdOpEx)}
                             </p>
                           </div>
                           <div className={`${ytdNet >= 0 ? 'bg-teal-500/10 border-teal-500/20' : 'bg-orange-500/10 border-orange-500/20'} border rounded-2xl p-4 text-center`}>
@@ -1071,22 +1071,22 @@ export default function DulinProperties() {
                               <div key={m.monthStr}
                                 className={`grid grid-cols-6 gap-2 px-4 py-2.5 ${m.isCurrent ? 'bg-teal-500/5' : ''} ${!m.isPast ? 'opacity-30' : ''}`}>
                                 <span className={`text-sm font-medium ${m.isCurrent ? 'text-teal-400' : 'text-white/70'}`}>
-                                  {m.monthLabel}{m.isCurrent ? ' â¢' : ''}
+                                  {m.monthLabel}{m.isCurrent ? ' •' : ''}
                                 </span>
                                 <span className="text-sm text-right text-emerald-400/80">
-                                  {m.isPast && m.income > 0 ? formatCurrency(m.income) : m.isPast ? 'â' : ''}
+                                  {m.isPast && m.income > 0 ? formatCurrency(m.income) : m.isPast ? '—' : ''}
                                 </span>
                                 <span className="text-sm text-right text-yellow-400/60">
-                                  {m.isPast && m.mgmt > 0 ? formatCurrency(m.mgmt) : m.isPast ? 'â' : ''}
+                                  {m.isPast && m.mgmt > 0 ? formatCurrency(m.mgmt) : m.isPast ? '—' : ''}
                                 </span>
                                 <span className="text-sm text-right text-red-400/70">
-                                  {m.isPast && m.opex > 0 ? formatCurrency(m.opex) : m.isPast ? 'â' : ''}
+                                  {m.isPast && m.opex > 0 ? formatCurrency(m.opex) : m.isPast ? '—' : ''}
                                 </span>
                                 <span className={`text-sm text-right font-medium ${m.isPast ? (m.net >= 0 ? 'text-teal-400' : 'text-orange-400') : ''}`}>
-                                  {m.isPast && (m.income > 0 || m.expenses > 0) ? formatCurrency(m.net) : m.isPast ? 'â' : ''}
+                                  {m.isPast && (m.income > 0 || m.expenses > 0) ? formatCurrency(m.net) : m.isPast ? '—' : ''}
                                 </span>
                                 <span className="text-sm text-right text-blue-400/60">
-                                  {m.isPast && m.dist > 0 ? formatCurrency(m.dist) : m.isPast ? 'â' : ''}
+                                  {m.isPast && m.dist > 0 ? formatCurrency(m.dist) : m.isPast ? '—' : ''}
                                 </span>
                               </div>
                             ))}
@@ -1114,7 +1114,7 @@ export default function DulinProperties() {
                           {vacantProperties.map(p => (
                             <button key={p.id} onClick={() => { setActiveSection('rentals'); setSelectedProperty(p); }}
                               className="block text-sm text-white/70 hover:text-white transition py-1">
-                              {p.emoji || 'ð '} {p.name}
+                              {p.emoji || '🏠'} {p.name}
                             </button>
                           ))}
                         </div>
@@ -1125,11 +1125,11 @@ export default function DulinProperties() {
                           {leaseExpiredProperties.map(p => {
                             const tenants = getPropertyTenants(p);
                             const earliestEnd = tenants.map(t => t.leaseEnd).filter(Boolean).sort()[0];
-                            const endLabel = earliestEnd ? ` â ${new Date(earliestEnd + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}` : '';
+                            const endLabel = earliestEnd ? ` — ${new Date(earliestEnd + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}` : '';
                             return (
                               <button key={p.id} onClick={() => { setActiveSection('rentals'); setSelectedProperty(p); }}
                                 className="block text-sm text-white/70 hover:text-white transition py-1">
-                                {p.emoji || 'ð '} {p.name}<span className="text-orange-400/70">{endLabel}</span>
+                                {p.emoji || '🏠'} {p.name}<span className="text-orange-400/70">{endLabel}</span>
                               </button>
                             );
                           })}
@@ -1147,7 +1147,7 @@ export default function DulinProperties() {
                             return (
                               <button key={p.id} onClick={() => { setActiveSection('rentals'); setSelectedProperty(p); }}
                                 className="block text-sm text-white/70 hover:text-white transition py-1">
-                                {p.emoji || 'ð '} {p.name} <span className="text-yellow-400/70">â {days}d left</span>
+                                {p.emoji || '🏠'} {p.name} <span className="text-yellow-400/70">— {days}d left</span>
                               </button>
                             );
                           })}
@@ -1275,7 +1275,7 @@ export default function DulinProperties() {
                           ))}
                           {properties.length === 0 && (
                             <div className="text-center py-16">
-                              <p className="text-4xl mb-3">ð </p>
+                              <p className="text-4xl mb-3">🏠</p>
                               <p className="text-white/40">No properties yet</p>
                               <button onClick={() => setShowNewPropertyModal('create')} className="mt-3 px-4 py-2 bg-teal-500 text-white rounded-xl text-sm hover:bg-teal-600 transition">
                                 Add Your First Property
@@ -1401,9 +1401,9 @@ export default function DulinProperties() {
                   <div className="flex gap-1.5 mb-4 items-center justify-between sticky top-[57px] z-20 bg-slate-900/95 backdrop-blur-md py-3 -mx-4 px-4">
                     <div className="flex gap-1.5">
                       {[
-                        { id: 'byType', emoji: 'ð' },
-                        { id: 'byProperty', emoji: 'ð ' },
-                        { id: 'all', emoji: 'ð' },
+                        { id: 'byType', emoji: '📁' },
+                        { id: 'byProperty', emoji: '🏠' },
+                        { id: 'all', emoji: '📄' },
                       ].map(tab => (
                         <button key={tab.id} onClick={() => setDocumentViewMode(tab.id)}
                           className={`px-3 md:px-4 py-2 rounded-xl font-medium transition text-base md:text-lg text-center ${
@@ -1440,7 +1440,7 @@ export default function DulinProperties() {
                       ))}
                       {documents.length === 0 && (
                         <div className="text-center py-16">
-                          <p className="text-4xl mb-3">ð</p>
+                          <p className="text-4xl mb-3">📄</p>
                           <p className="text-white/40">No documents yet</p>
                           <button onClick={() => setShowAddDocumentModal('create')} className="mt-3 px-4 py-2 bg-amber-500 text-white rounded-xl text-sm hover:bg-amber-600 transition">
                             Upload Your First Document
@@ -1458,7 +1458,7 @@ export default function DulinProperties() {
                         if (propDocs.length === 0) return null;
                         return (
                           <div key={prop.id}>
-                            <h3 className="text-sm font-semibold text-white/60 mb-2">{prop.emoji || 'ð '} {prop.name}</h3>
+                            <h3 className="text-sm font-semibold text-white/60 mb-2">{prop.emoji || '🏠'} {prop.name}</h3>
                             <div className="space-y-2">
                               {propDocs.map(docItem => (
                                 <DocumentCard
@@ -1477,7 +1477,7 @@ export default function DulinProperties() {
                       {/* Unlinked docs */}
                       {documents.filter(d => !d.propertyId).length > 0 && (
                         <div>
-                          <h3 className="text-sm font-semibold text-white/60 mb-2">ð General</h3>
+                          <h3 className="text-sm font-semibold text-white/60 mb-2">📁 General</h3>
                           <div className="space-y-2">
                             {documents.filter(d => !d.propertyId).map(docItem => (
                               <DocumentCard
@@ -1529,9 +1529,9 @@ export default function DulinProperties() {
                   {/* Sub-nav */}
                   <div className="flex gap-1.5 mb-4 items-center justify-start sticky top-[57px] z-20 bg-slate-900/95 backdrop-blur-md py-3 -mx-4 px-4">
                     {[
-                      { id: 'transactions', emoji: 'ð°' },
-                      { id: 'summary', emoji: 'ð' },
-                      { id: 'byProperty', emoji: 'ð ' },
+                      { id: 'transactions', emoji: '💰' },
+                      { id: 'summary', emoji: '📈' },
+                      { id: 'byProperty', emoji: '🏠' },
                     ].map(tab => (
                       <button key={tab.id} onClick={() => setFinancialViewMode(tab.id)}
                         className={`flex-1 md:flex-none px-3 md:px-4 py-2 rounded-xl font-medium transition text-base md:text-lg text-center ${
@@ -1571,7 +1571,7 @@ export default function DulinProperties() {
                           ))}
                         {transactions.length === 0 && (
                           <div className="text-center py-16">
-                            <p className="text-4xl mb-3">ð°</p>
+                            <p className="text-4xl mb-3">💰</p>
                             <p className="text-white/40">No transactions yet</p>
                             <button onClick={() => setShowAddTransactionModal('create')} className="mt-3 px-4 py-2 bg-emerald-500 text-white rounded-xl text-sm hover:bg-emerald-600 transition">
                               Log Your First Transaction
@@ -1604,7 +1604,7 @@ export default function DulinProperties() {
                         const expenses = propTxns.filter(t => t.type === 'expense').reduce((s, t) => s + (t.amount || 0), 0);
                         return (
                           <div key={prop.id} className="bg-white/[0.05] border border-white/[0.08] rounded-2xl p-4">
-                            <h3 className="font-semibold text-white mb-2">{prop.emoji || 'ð '} {prop.name}</h3>
+                            <h3 className="font-semibold text-white mb-2">{prop.emoji || '🏠'} {prop.name}</h3>
                             <div className="grid grid-cols-3 gap-2 text-sm">
                               <div><span className="text-white/40">Income:</span> <span className="text-emerald-400">{formatCurrency(income)}</span></div>
                               <div><span className="text-white/40">Expenses:</span> <span className="text-red-400">{formatCurrency(expenses)}</span></div>
@@ -1852,13 +1852,13 @@ export default function DulinProperties() {
               const incomeItems = items.filter(i => i.flowType === 'income');
               const expenseItems = items.filter(i => i.flowType !== 'income');
 
-              // Route expenses â Expenses section
+              // Route expenses → Expenses section
               for (const item of expenseItems) {
                 addExpense({ ...item, id: Date.now().toString() + Math.random().toString(36).slice(2, 6), createdAt: new Date().toISOString(), createdBy: currentUser });
                 await new Promise(r => setTimeout(r, 50));
               }
 
-              // Route income â Rent section
+              // Route income → Rent section
               for (const item of incomeItems) {
                 const month = item.date ? item.date.substring(0, 7) : item.reportMonth || '';
                 addRentPayment({
@@ -1953,11 +1953,11 @@ export default function DulinProperties() {
                   style={{ animation: 'fabGridIn 0.15s ease-out both' }}>
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { action: () => setShowAddTaskModal('create'), icon: 'â', label: 'Task', gradient: 'from-blue-400 to-indigo-500' },
-                      { action: () => setShowAddRentModal('create'), icon: 'ð°', label: 'Rent', gradient: 'from-emerald-400 to-green-500' },
-                      { action: () => setShowAddExpenseModal('create'), icon: 'ð¸', label: 'Expense', gradient: 'from-red-400 to-rose-500' },
-                      { action: () => setShowAddDocumentModal('create'), icon: 'ð', label: 'Document', gradient: 'from-amber-400 to-orange-500' },
-                      { action: () => setShowSharedListModal('create'), icon: 'ð', label: 'List', gradient: 'from-emerald-400 to-teal-500' },
+                      { action: () => setShowAddTaskModal('create'), icon: '✅', label: 'Task', gradient: 'from-blue-400 to-indigo-500' },
+                      { action: () => setShowAddRentModal('create'), icon: '💰', label: 'Rent', gradient: 'from-emerald-400 to-green-500' },
+                      { action: () => setShowAddExpenseModal('create'), icon: '💸', label: 'Expense', gradient: 'from-red-400 to-rose-500' },
+                      { action: () => setShowAddDocumentModal('create'), icon: '📄', label: 'Document', gradient: 'from-amber-400 to-orange-500' },
+                      { action: () => setShowSharedListModal('create'), icon: '📋', label: 'List', gradient: 'from-emerald-400 to-teal-500' },
                     ].map((item, idx) => (
                       <button key={item.label} onClick={() => { setShowAddNewMenu(false); item.action(); }}
                         className="flex flex-col items-center justify-center gap-1.5 py-2.5 rounded-xl hover:bg-white/10 transition active:scale-95"
@@ -1995,11 +1995,11 @@ export default function DulinProperties() {
                   style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 132px)', animation: 'fabGridUp 0.2s cubic-bezier(0.16,1,0.3,1) both', transformOrigin: 'bottom right' }}>
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { action: () => setShowAddTaskModal('create'), icon: 'â', label: 'Task', gradient: 'from-blue-400 to-indigo-500' },
-                      { action: () => setShowAddRentModal('create'), icon: 'ð°', label: 'Rent', gradient: 'from-emerald-400 to-green-500' },
-                      { action: () => setShowAddExpenseModal('create'), icon: 'ð¸', label: 'Expense', gradient: 'from-red-400 to-rose-500' },
-                      { action: () => setShowAddDocumentModal('create'), icon: 'ð', label: 'Document', gradient: 'from-amber-400 to-orange-500' },
-                      { action: () => setShowSharedListModal('create'), icon: 'ð', label: 'List', gradient: 'from-emerald-400 to-teal-500' },
+                      { action: () => setShowAddTaskModal('create'), icon: '✅', label: 'Task', gradient: 'from-blue-400 to-indigo-500' },
+                      { action: () => setShowAddRentModal('create'), icon: '💰', label: 'Rent', gradient: 'from-emerald-400 to-green-500' },
+                      { action: () => setShowAddExpenseModal('create'), icon: '💸', label: 'Expense', gradient: 'from-red-400 to-rose-500' },
+                      { action: () => setShowAddDocumentModal('create'), icon: '📄', label: 'Document', gradient: 'from-amber-400 to-orange-500' },
+                      { action: () => setShowSharedListModal('create'), icon: '📋', label: 'List', gradient: 'from-emerald-400 to-teal-500' },
                     ].map((item, idx) => {
                       const row = Math.floor(idx / 3);
                       const delay = (1 - row) * 0.04 + (idx % 3) * 0.015;
@@ -2023,15 +2023,15 @@ export default function DulinProperties() {
 
             {/* Nav bar */}
             <div className="relative bg-slate-900 border-t border-white/10" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-              {/* Tab buttons â all 6 sections */}
+              {/* Tab buttons — all 6 sections */}
               <div className="flex items-end justify-around px-1 pt-1 pb-1">
                 {[
-                  { id: 'dashboard', label: 'Home', emoji: 'ð', gradient: 'from-purple-500 to-violet-500' },
-                  { id: 'rentals', label: 'Props', emoji: 'ð ', gradient: 'from-teal-400 to-cyan-500' },
-                  { id: 'tenants', label: 'Tenants', emoji: 'ð¤', gradient: 'from-blue-400 to-indigo-500' },
-                  { id: 'rent', label: 'Rent', emoji: 'ð°', gradient: 'from-emerald-400 to-green-500' },
-                  { id: 'expenses', label: 'Costs', emoji: 'ð¸', gradient: 'from-red-400 to-rose-500' },
-                  { id: 'documents', label: 'Docs', emoji: 'ð', gradient: 'from-amber-400 to-orange-500' },
+                  { id: 'dashboard', label: 'Home', emoji: '📊', gradient: 'from-purple-500 to-violet-500' },
+                  { id: 'rentals', label: 'Props', emoji: '🏠', gradient: 'from-teal-400 to-cyan-500' },
+                  { id: 'tenants', label: 'Tenants', emoji: '👤', gradient: 'from-blue-400 to-indigo-500' },
+                  { id: 'rent', label: 'Rent', emoji: '💰', gradient: 'from-emerald-400 to-green-500' },
+                  { id: 'expenses', label: 'Costs', emoji: '💸', gradient: 'from-red-400 to-rose-500' },
+                  { id: 'documents', label: 'Docs', emoji: '📄', gradient: 'from-amber-400 to-orange-500' },
                 ].map((section) => (
                   <button
                     key={section.id}
@@ -2056,7 +2056,7 @@ export default function DulinProperties() {
               </div>
             </div>
 
-            {/* FAB â floating above bottom nav on right side */}
+            {/* FAB — floating above bottom nav on right side */}
             {isOwner && (
               <button
                 onClick={() => setShowAddNewMenu(!showAddNewMenu)}
