@@ -3,7 +3,7 @@ import { X, ChevronDown, ChevronUp, TrendingUp, TrendingDown, ArrowRight } from 
 
 const formatCurrency = (amount) => {
   const num = parseFloat(amount) || 0;
-  return num.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return num.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
 const PropertyFinancialBreakdownModal = ({ properties, rentPayments, expenses, onPropertyClick, onClose }) => {
