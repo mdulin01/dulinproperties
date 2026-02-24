@@ -5,7 +5,7 @@ import { getPropertyTenants } from '../../hooks/useProperties';
 
 const formatCurrency = (amount) => {
   const num = parseFloat(amount) || 0;
-  return num.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return num.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
 const PropertyDetail = ({ property, onBack, onEdit, onDelete, onEditTenant, onAddTenant, onRemoveTenant, onUpdateProperty, expenses = [], rentPayments = [] }) => {
