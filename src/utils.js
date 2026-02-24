@@ -18,7 +18,7 @@ export const formatDate = (dateStr) => {
 
 export const formatCurrency = (amount) => {
   if (amount === null || amount === undefined) return '$0';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
 };
 
 export const formatCurrencyDetailed = (amount) => {
