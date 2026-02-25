@@ -3,7 +3,9 @@ import { X, ChevronDown, ChevronUp, TrendingUp, TrendingDown, ArrowRight } from 
 
 const formatCurrency = (amount) => {
   const num = parseFloat(amount) || 0;
-  return num.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  const digits = isMobile ? 0 : 2;
+  return num.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: digits, maximumFractionDigits: digits });
 };
 
 const PropertyFinancialBreakdownModal = ({ properties, rentPayments, expenses, onPropertyClick, onClose }) => {
