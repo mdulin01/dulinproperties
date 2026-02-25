@@ -20,8 +20,20 @@
 
 **CRITICAL: When working on this project, ONLY access files within the `dulinproperties/` directory.** Do not read, write, or reference files from any sibling project folder (rainbow-rentals, lifedesigncourse, downtownGSO, etc.). If you need something from another project, stop and ask first.
 
-## Notes
+## Infrastructure
 
+- **Firebase Storage Bucket:** `gs://dulinproperties.firebasestorage.app`
+- **Storage Rules:** Authenticated users only (`request.auth != null`). Deployed via Firebase CLI.
+- **CORS Origins:** `https://www.dulinproperties.app`, `https://dulinproperties.app`, `http://localhost:5173`
+- **Billing Plan:** Blaze (pay-as-you-go) — required for Storage
+- **Firebase credentials** are in `.env.local` (not committed). Use `VITE_FIREBASE_*` env vars.
+
+## Architecture Notes
+
+- **Main component:** `src/dulin-properties.jsx`
+- **Shared utility:** `src/utils.js` — contains `formatCurrency()` used across the app
+- **Key component files:**
+  - `src/components/Rentals/PropertyCard.jsx` — property card in dashboard grid
+  - `src/components/Rentals/PropertyDetail.jsx` — full property detail view
+  - `src/components/Rentals/PropertyFinancialBreakdownModal.jsx` — financial breakdown modal
 - This project shares a similar structure with `rainbow-rentals` but they are **completely separate** — separate Firebase projects, separate repos, separate domains, separate Vercel deployments.
-- Firebase credentials are in `.env.local` (not committed). Use `VITE_FIREBASE_*` env vars.
-- Main component: `src/dulin-properties.jsx`

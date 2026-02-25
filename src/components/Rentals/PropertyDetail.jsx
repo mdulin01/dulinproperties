@@ -2,13 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { ArrowLeft, Edit3, MapPin, User, DollarSign, Calendar, Phone, Mail, FileText, Image, Trash2, Plus, Lightbulb, X, Globe, Building2, TrendingUp, TrendingDown, Wrench, AlertTriangle } from 'lucide-react';
 import { tenantStatuses, capitalConditions } from '../../constants';
 import { getPropertyTenants } from '../../hooks/useProperties';
-
-const formatCurrency = (amount) => {
-  const num = parseFloat(amount) || 0;
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-  const digits = isMobile ? 0 : 2;
-  return num.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: digits, maximumFractionDigits: digits });
-};
+import { formatCurrency } from '../../utils';
 
 const PropertyDetail = ({ property, onBack, onEdit, onDelete, onEditTenant, onAddTenant, onRemoveTenant, onUpdateProperty, expenses = [], rentPayments = [] }) => {
   const [activeTab, setActiveTab] = useState('overview');

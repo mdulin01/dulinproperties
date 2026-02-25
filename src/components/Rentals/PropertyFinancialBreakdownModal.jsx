@@ -1,12 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { X, ChevronDown, ChevronUp, TrendingUp, TrendingDown, ArrowRight } from 'lucide-react';
-
-const formatCurrency = (amount) => {
-  const num = parseFloat(amount) || 0;
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-  const digits = isMobile ? 0 : 2;
-  return num.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: digits, maximumFractionDigits: digits });
-};
+import { formatCurrency } from '../../utils';
 
 const PropertyFinancialBreakdownModal = ({ properties, rentPayments, expenses, onPropertyClick, onClose }) => {
   const [sortField, setSortField] = useState('profit');
