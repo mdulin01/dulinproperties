@@ -1042,11 +1042,12 @@ export default function DulinProperties() {
                       // Per-manager breakdown
                       const monthRent = rentPayments.filter(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(monthStr));
                       const byManager = managers.map(mgr => {
-                        const mgrPropIds = properties.filter(p => getManager(p.color) === mgr).map(p => p.id);
-                        const mIncome = monthRent.filter(r => mgrPropIds.includes(r.propertyId)).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
-                        const mMgmt = monthExps.filter(e => isMgmtFee(e) && mgrPropIds.includes(e.propertyId)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                        const mOpex = monthExps.filter(e => isOperatingExpense(e) && mgrPropIds.includes(e.propertyId)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                        const mDist = monthExps.filter(e => isDistribution(e) && mgrPropIds.includes(e.propertyId)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                        const mgrPropIds = properties.filter(p => getManager(p.color) === mgr).map(p => String(p.id));
+                        const inMgr = (id) => mgrPropIds.includes(String(id || ''));
+                        const mIncome = monthRent.filter(r => inMgr(r.propertyId)).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+                        const mMgmt = monthExps.filter(e => isMgmtFee(e) && inMgr(e.propertyId)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                        const mOpex = monthExps.filter(e => isOperatingExpense(e) && inMgr(e.propertyId)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                        const mDist = monthExps.filter(e => isDistribution(e) && inMgr(e.propertyId)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                         const mTotalExp = mMgmt + mOpex;
                         return { manager: mgr, income: mIncome, mgmt: mMgmt, opex: mOpex, dist: mDist, expenses: mTotalExp, net: mIncome - mTotalExp };
                       }).filter(m => m.income > 0 || m.expenses > 0 || m.dist > 0);
