@@ -1050,7 +1050,7 @@ export default function DulinProperties() {
                         const mDist = monthExps.filter(e => isDistribution(e) && inMgr(e.propertyId)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                         const mTotalExp = mMgmt + mOpex;
                         return { manager: mgr, income: mIncome, mgmt: mMgmt, opex: mOpex, dist: mDist, expenses: mTotalExp, net: mIncome - mTotalExp };
-                      }).filter(m => m.income > 0 || m.expenses > 0 || m.dist > 0);
+                      }).filter(m => m.manager === 'Dianne Dulin' || m.income > 0 || m.expenses > 0 || m.dist > 0);
 
                       return { monthStr, monthLabel, income, mgmt, opex, dist, expenses: totalExp, net: income - totalExp, isPast, isCurrent, byManager };
                     });
