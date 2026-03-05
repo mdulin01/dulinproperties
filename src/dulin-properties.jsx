@@ -116,6 +116,7 @@ export default function DulinProperties() {
   const [isOwner, setIsOwner] = useState(false);
   const [showAddNewMenu, setShowAddNewMenu] = useState(false);
   const [showMobileSectionDropdown, setShowMobileSectionDropdown] = useState(false);
+  const [expandedMonths, setExpandedMonths] = useState({});
 
   // Search
   const [showSearch, setShowSearch] = useState(false);
@@ -1007,6 +1008,20 @@ export default function DulinProperties() {
                     const ytdTotalExpenses = ytdMgmtFees + ytdOpEx; // distributions excluded
                     const ytdNet = ytdRent - ytdTotalExpenses;
 
+                    // Management company mapping
+                    const getManager = (color) => {
+                      if (!color) return 'Absolute';
+                      if (color.includes('purple') || color.includes('violet') || color.includes('indigo')) return 'Barnett & Hill';
+                      if (color.includes('rose') || color.includes('pink')) return 'Dianne Dulin';
+                      return 'Absolute';
+                    };
+                    const managers = ['Barnett & Hill', 'Absolute', 'Dianne Dulin'];
+                    const managerColors = { 'Barnett & Hill': 'text-purple-400', 'Absolute': 'text-teal-400', 'Dianne Dulin': 'text-pink-400' };
+
+                    // Build propertyId → manager lookup
+                    const propManagerMap = {};
+                    properties.forEach(p => { propManagerMap[p.id] = getManager(p.color); });
+
                     // Monthly breakdown: Jan of current year through Dec
                     const months = Array.from({ length: 12 }, (_, i) => {
                       const monthStr = `${yearStr}-${String(i + 1).padStart(2, '0')}`;
@@ -1024,7 +1039,19 @@ export default function DulinProperties() {
                       const dist = monthExps.filter(isDistribution).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                       const totalExp = mgmt + opex;
 
-                      return { monthStr, monthLabel, income, mgmt, opex, dist, expenses: totalExp, net: income - totalExp, isPast, isCurrent };
+                      // Per-manager breakdown
+                      const monthRent = rentPayments.filter(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(monthStr));
+                      const byManager = managers.map(mgr => {
+                        const mgrPropIds = properties.filter(p => getManager(p.color) === mgr).map(p => p.id);
+                        const mIncome = monthRent.filter(r => mgrPropIds.includes(r.propertyId)).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+                        const mMgmt = monthExps.filter(e => isMgmtFee(e) && mgrPropIds.includes(e.propertyId)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                        const mOpex = monthExps.filter(e => isOperatingExpense(e) && mgrPropIds.includes(e.propertyId)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                        const mDist = monthExps.filter(e => isDistribution(e) && mgrPropIds.includes(e.propertyId)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                        const mTotalExp = mMgmt + mOpex;
+                        return { manager: mgr, income: mIncome, mgmt: mMgmt, opex: mOpex, dist: mDist, expenses: mTotalExp, net: mIncome - mTotalExp };
+                      }).filter(m => m.income > 0 || m.expenses > 0 || m.dist > 0);
+
+                      return { monthStr, monthLabel, income, mgmt, opex, dist, expenses: totalExp, net: income - totalExp, isPast, isCurrent, byManager };
                     });
 
                     return (
@@ -1067,29 +1094,67 @@ export default function DulinProperties() {
                               <span className="text-right">Net</span>
                               <span className="text-right">Distributed</span>
                             </div>
-                            {months.map(m => (
-                              <div key={m.monthStr}
-                                className={`grid grid-cols-6 gap-2 px-4 py-2.5 ${m.isCurrent ? 'bg-teal-500/5' : ''} ${!m.isPast ? 'opacity-30' : ''}`}>
-                                <span className={`text-sm font-medium ${m.isCurrent ? 'text-teal-400' : 'text-white/70'}`}>
-                                  {m.monthLabel}{m.isCurrent ? ' •' : ''}
-                                </span>
-                                <span className="text-sm text-right text-emerald-400/80">
-                                  {m.isPast && m.income > 0 ? formatCurrency(m.income) : m.isPast ? '—' : ''}
-                                </span>
-                                <span className="text-sm text-right text-yellow-400/60">
-                                  {m.isPast && m.mgmt > 0 ? formatCurrency(m.mgmt) : m.isPast ? '—' : ''}
-                                </span>
-                                <span className="text-sm text-right text-red-400/70">
-                                  {m.isPast && m.opex > 0 ? formatCurrency(m.opex) : m.isPast ? '—' : ''}
-                                </span>
-                                <span className={`text-sm text-right font-medium ${m.isPast ? (m.net >= 0 ? 'text-teal-400' : 'text-orange-400') : ''}`}>
-                                  {m.isPast && (m.income > 0 || m.expenses > 0) ? formatCurrency(m.net) : m.isPast ? '—' : ''}
-                                </span>
-                                <span className="text-sm text-right text-blue-400/60">
-                                  {m.isPast && m.dist > 0 ? formatCurrency(m.dist) : m.isPast ? '—' : ''}
-                                </span>
-                              </div>
-                            ))}
+                            {months.map(m => {
+                              const isExpanded = expandedMonths[m.monthStr];
+                              const hasData = m.isPast && (m.income > 0 || m.expenses > 0 || m.dist > 0);
+                              const hasBreakdown = m.byManager && m.byManager.length > 0;
+                              return (
+                                <div key={m.monthStr}>
+                                  <div
+                                    className={`grid grid-cols-6 gap-2 px-4 py-2.5 ${m.isCurrent ? 'bg-teal-500/5' : ''} ${!m.isPast ? 'opacity-30' : ''} ${hasData && hasBreakdown ? 'cursor-pointer hover:bg-white/[0.02] transition' : ''}`}
+                                    onClick={() => { if (hasData && hasBreakdown) setExpandedMonths(prev => ({ ...prev, [m.monthStr]: !prev[m.monthStr] })); }}
+                                  >
+                                    <span className={`text-sm font-medium ${m.isCurrent ? 'text-teal-400' : 'text-white/70'} flex items-center gap-1`}>
+                                      {hasData && hasBreakdown && (
+                                        <ChevronDown className={`w-3 h-3 text-white/30 transition-transform flex-shrink-0 ${isExpanded ? '' : '-rotate-90'}`} />
+                                      )}
+                                      {m.monthLabel}{m.isCurrent ? ' •' : ''}
+                                    </span>
+                                    <span className="text-sm text-right text-emerald-400/80">
+                                      {m.isPast && m.income > 0 ? formatCurrency(m.income) : m.isPast ? '—' : ''}
+                                    </span>
+                                    <span className="text-sm text-right text-yellow-400/60">
+                                      {m.isPast && m.mgmt > 0 ? formatCurrency(m.mgmt) : m.isPast ? '—' : ''}
+                                    </span>
+                                    <span className="text-sm text-right text-red-400/70">
+                                      {m.isPast && m.opex > 0 ? formatCurrency(m.opex) : m.isPast ? '—' : ''}
+                                    </span>
+                                    <span className={`text-sm text-right font-medium ${m.isPast ? (m.net >= 0 ? 'text-teal-400' : 'text-orange-400') : ''}`}>
+                                      {m.isPast && (m.income > 0 || m.expenses > 0) ? formatCurrency(m.net) : m.isPast ? '—' : ''}
+                                    </span>
+                                    <span className="text-sm text-right text-blue-400/60">
+                                      {m.isPast && m.dist > 0 ? formatCurrency(m.dist) : m.isPast ? '—' : ''}
+                                    </span>
+                                  </div>
+                                  {isExpanded && hasBreakdown && (
+                                    <div className="bg-white/[0.015]">
+                                      {m.byManager.map(bm => (
+                                        <div key={bm.manager} className="grid grid-cols-6 gap-2 px-4 py-1.5 pl-8">
+                                          <span className={`text-xs font-medium ${managerColors[bm.manager] || 'text-white/50'} truncate`}>
+                                            {bm.manager}
+                                          </span>
+                                          <span className="text-xs text-right text-emerald-400/50">
+                                            {bm.income > 0 ? formatCurrency(bm.income) : '—'}
+                                          </span>
+                                          <span className="text-xs text-right text-yellow-400/40">
+                                            {bm.mgmt > 0 ? formatCurrency(bm.mgmt) : '—'}
+                                          </span>
+                                          <span className="text-xs text-right text-red-400/50">
+                                            {bm.opex > 0 ? formatCurrency(bm.opex) : '—'}
+                                          </span>
+                                          <span className={`text-xs text-right ${bm.net >= 0 ? 'text-teal-400/50' : 'text-orange-400/50'}`}>
+                                            {bm.income > 0 || bm.expenses > 0 ? formatCurrency(bm.net) : '—'}
+                                          </span>
+                                          <span className="text-xs text-right text-blue-400/40">
+                                            {bm.dist > 0 ? formatCurrency(bm.dist) : '—'}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                             {/* YTD total row */}
                             <div className="grid grid-cols-6 gap-2 px-4 py-3 bg-white/[0.03] border-t border-white/10">
                               <span className="text-sm font-bold text-white">YTD Total</span>
