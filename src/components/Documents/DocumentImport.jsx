@@ -107,6 +107,126 @@ function guessCategory(description) {
   return 'other';
 }
 
+/**
+ * Generate pre-parsed entries from Barnett & Hill Feb 2026 owner statement.
+ * Each property's rent, mgmt fees, repairs, and distributions.
+ */
+function parseBHFeb2026(properties) {
+  const bhData = [
+    { address: '5102 Encino Rd', items: [
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 680, date: '2026-02-01', tenant: 'Renate Evans' },
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 68, date: '2026-02-10', cat: 'management-fee', vendor: 'Barnett & Hill' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 612, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Barnett & Hill' },
+    ]},
+    { address: '5217 Questa Dr', items: [
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 1300, date: '2026-02-01', tenant: 'kaelyn G. merrell' },
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 130, date: '2026-02-10', cat: 'management-fee', vendor: 'Barnett & Hill' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 1170, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Barnett & Hill' },
+    ]},
+    { address: '5220 Encino Rd', items: [
+      { flow: 'income', desc: 'Rent Income - January 2026 (late)', amount: 12, date: '2026-02-02', tenant: 'Estela Contreras' },
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 323, date: '2026-02-02', tenant: 'Estela Contreras' },
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 676, date: '2026-02-03', tenant: 'Estela Contreras' },
+      { flow: 'expense', desc: 'Repairs - Hill Properties Repair Bill', amount: 21, date: '2026-02-10', cat: 'repair', vendor: 'Hill Properties' },
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 101.10, date: '2026-02-10', cat: 'management-fee', vendor: 'Barnett & Hill' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 738.90, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Barnett & Hill' },
+    ]},
+    { address: '5297 Pueblo Dr', items: [
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 900, date: '2026-02-04', tenant: 'Leevon M. Henderson' },
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 90, date: '2026-02-10', cat: 'management-fee', vendor: 'Barnett & Hill' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 810, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Barnett & Hill' },
+    ]},
+    { address: '5426 Durango Dr', items: [
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 77, date: '2026-02-02', tenant: 'Elena Flores' },
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 1075, date: '2026-02-03', tenant: 'Elena Flores' },
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 115.20, date: '2026-02-10', cat: 'management-fee', vendor: 'Barnett & Hill' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 1036.80, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Barnett & Hill' },
+    ]},
+    { address: '657 Ruidosa Dr #215', items: [
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 845, date: '2026-02-04', tenant: 'Odyssey N. Keller' },
+      { flow: 'expense', desc: 'Repairs - Hill Properties Repair Bill', amount: 30, date: '2026-02-10', cat: 'repair', vendor: 'Hill Properties' },
+      { flow: 'expense', desc: 'Management fees - 01/2026', amount: 53, date: '2026-02-10', cat: 'management-fee', vendor: 'Barnett & Hill' },
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 85, date: '2026-02-10', cat: 'management-fee', vendor: 'Barnett & Hill' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 1397, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Barnett & Hill' },
+    ]},
+    { address: '657 Ruidosa Dr #220', items: [
+      // Beginning balance $800 from Jan prepaid rent - mgmt fee and dist against it
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 80, date: '2026-02-10', cat: 'management-fee', vendor: 'Barnett & Hill' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 720, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Barnett & Hill' },
+    ]},
+    { address: '840 Poplar St', items: [
+      // Beginning balance $700 from Jan prepaid rent - repairs and mgmt against it
+      { flow: 'expense', desc: 'Repairs - Hill Properties Repair Bill', amount: 1032.55, date: '2026-02-10', cat: 'repair', vendor: 'Hill Properties' },
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 70, date: '2026-02-10', cat: 'management-fee', vendor: 'Barnett & Hill' },
+    ]},
+    { address: '842 Poplar St', items: [
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 550, date: '2026-02-02', tenant: 'Jay Bridges' },
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 55, date: '2026-02-10', cat: 'management-fee', vendor: 'Barnett & Hill' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 495, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Barnett & Hill' },
+    ]},
+    { address: '5402 S 7th St', items: [
+      // Sunset Villa #106 - beginning balance $850 from Jan prepaid
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 85, date: '2026-02-10', cat: 'management-fee', vendor: 'Barnett & Hill' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 765, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Barnett & Hill' },
+    ]},
+  ];
+
+  const entries = [];
+  let idx = 0;
+  for (const prop of bhData) {
+    const matched = matchProperty(prop.address, properties);
+    for (const item of prop.items) {
+      entries.push({
+        id: `bh-feb26-${idx++}`,
+        description: item.desc,
+        amount: item.amount,
+        date: item.date,
+        category: item.cat || 'other',
+        vendor: item.vendor || '',
+        tenantName: item.tenant || '',
+        propertyId: matched ? String(matched.id) : '',
+        propertyName: matched ? `${matched.emoji || '🏠'} ${matched.name}` : `⚠️ ${prop.address}`,
+        propertyHint: prop.address,
+        sourceDocument: 'Barnett & Hill',
+        flowType: item.flow,
+        selected: true,
+        imported: false,
+      });
+    }
+  }
+  return entries;
+}
+
+/**
+ * Generate pre-parsed entries from FFB Feb 2026 bank statement.
+ * Only utilities + repairs (Atmos Energy, Lowes, Vexus).
+ */
+function parseFFBFeb2026() {
+  const items = [
+    { desc: 'Atmos Energy - Gas', amount: 25.69, date: '2026-02-02', cat: 'utilities', vendor: 'Atmos Energy' },
+    { desc: 'Atmos Energy - Gas', amount: 281.46, date: '2026-02-02', cat: 'utilities', vendor: 'Atmos Energy' },
+    { desc: 'Lowes - Repairs/Supplies', amount: 805.07, date: '2026-02-09', cat: 'repair', vendor: 'Lowes' },
+    { desc: 'Atmos Energy - Gas', amount: 271.22, date: '2026-02-20', cat: 'utilities', vendor: 'Atmos Energy' },
+    { desc: 'Vexus - Internet', amount: 108.40, date: '2026-02-25', cat: 'internet', vendor: 'Vexus' },
+  ];
+
+  return items.map((item, i) => ({
+    id: `ffb-feb26-${i}`,
+    description: item.desc,
+    amount: item.amount,
+    date: item.date,
+    category: item.cat,
+    vendor: item.vendor,
+    tenantName: '',
+    propertyId: '',
+    propertyName: '',
+    sourceDocument: 'FFB Bank',
+    flowType: 'expense',
+    selected: true,
+    imported: false,
+  }));
+}
+
 export default function DocumentImport({ properties, expenses, addExpense, addRentPayment, showToast, onClose }) {
   const [activeSource, setActiveSource] = useState(null);
   const [entries, setEntries] = useState([]); // parsed entries for review
@@ -206,7 +326,13 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
             return (
               <button
                 key={src.id}
-                onClick={() => setActiveSource(src.id)}
+                onClick={() => {
+                  setActiveSource(src.id);
+                  // Auto-load pre-parsed Feb 2026 data if available
+                  if (src.id === 'barnett-hill') setEntries(parseBHFeb2026(properties));
+                  else if (src.id === 'ffb-bank') setEntries(parseFFBFeb2026());
+                  else setEntries([]);
+                }}
                 className={`${c.bg} border ${c.border} rounded-2xl p-5 text-center hover:brightness-110 transition group`}
               >
                 <span className="text-2xl block mb-2">{src.icon}</span>
