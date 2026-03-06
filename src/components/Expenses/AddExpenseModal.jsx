@@ -19,6 +19,7 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
     recurring: false,
     recurringFrequency: 'monthly',
     dueDay: '',
+    sourceDocument: '',
     // Mileage-specific fields
     miles: '',
     tripFrom: '',
@@ -43,6 +44,7 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
         recurring: expense.recurring || false,
         recurringFrequency: expense.recurringFrequency || 'monthly',
         dueDay: expense.dueDay || '',
+        sourceDocument: expense.sourceDocument || '',
         miles: expense.miles || '',
         tripFrom: expense.tripFrom || '',
         tripTo: expense.tripTo || '',
@@ -154,6 +156,7 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
       tripTo: isMileage ? form.tripTo : undefined,
       description: form.description || (isMileage ? `Mileage: ${form.miles} mi` : ''),
       receiptPhoto: form.receiptPhoto || '',
+      sourceDocument: form.sourceDocument || '',
       recurring: form.recurring || false,
       recurringFrequency: form.recurring ? form.recurringFrequency : undefined,
       dueDay: form.recurring ? parseInt(form.dueDay) : undefined,
@@ -455,6 +458,23 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
                   rows={2}
                   className="w-full px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50 resize-none"
                 />
+              </div>
+
+              {/* Source Document */}
+              <div>
+                <label className="text-xs text-white/40 mb-1 block">Source Document</label>
+                <select
+                  value={form.sourceDocument}
+                  onChange={e => setForm(f => ({ ...f, sourceDocument: e.target.value }))}
+                  className="w-full px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white focus:outline-none focus:border-red-500/50"
+                >
+                  <option value="">None</option>
+                  <option value="Barnett & Hill">Barnett & Hill</option>
+                  <option value="Absolute">Absolute</option>
+                  <option value="FFB Bank">FFB Bank</option>
+                  <option value="Citi Card">Citi Card</option>
+                  <option value="Manual">Manual</option>
+                </select>
               </div>
             </>
           )}

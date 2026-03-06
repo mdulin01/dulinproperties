@@ -62,6 +62,7 @@ export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDe
         case 'category': return dir * (a.category || '').localeCompare(b.category || '');
         case 'date': return dir * (a.date || 'zzzz').localeCompare(b.date || 'zzzz');
         case 'amount': return dir * ((a.amount || 0) - (b.amount || 0));
+        case 'source': return dir * (a.sourceDocument || '').localeCompare(b.sourceDocument || '');
         default: return 0;
       }
     });
@@ -441,6 +442,9 @@ export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDe
                   <th className="text-left px-4 py-3 text-xs font-semibold text-white/40 uppercase tracking-wide cursor-pointer hover:text-white/60" onClick={() => handleSort('property')}>
                     Property <SortIcon col="property" />
                   </th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-white/40 uppercase tracking-wide cursor-pointer hover:text-white/60" onClick={() => handleSort('source')}>
+                    Source <SortIcon col="source" />
+                  </th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-white/40 uppercase tracking-wide cursor-pointer hover:text-white/60" onClick={() => handleSort('amount')}>
                     Amount <SortIcon col="amount" />
                   </th>
@@ -481,6 +485,13 @@ export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDe
                     <td className="px-4 py-3">{getCategoryBadge(exp.category)}</td>
                     <td className="px-4 py-3">
                       <span className="text-sm text-white/70">{exp.propertyName || '—'}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {exp.sourceDocument ? (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/[0.06] border border-white/[0.08] text-white/50 whitespace-nowrap">
+                          {exp.sourceDocument}
+                        </span>
+                      ) : <span className="text-sm text-white/30">—</span>}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <span className="text-sm font-medium text-red-400">{formatCurrency(exp.amount || 0)}</span>

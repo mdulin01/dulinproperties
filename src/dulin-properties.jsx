@@ -48,6 +48,7 @@ import ExpenseReportUpload from './components/Expenses/ExpenseReportUpload';
 import DocumentCard from './components/Documents/DocumentCard';
 import AddDocumentModal from './components/Documents/AddDocumentModal';
 import DocumentViewer from './components/Documents/DocumentViewer';
+import DocumentImport from './components/Documents/DocumentImport';
 
 // Financials components (kept for backward compat)
 import TransactionCard from './components/Financials/TransactionCard';
@@ -1414,7 +1415,6 @@ export default function DulinProperties() {
                   expenses={expenses}
                   properties={properties}
                   onAdd={() => setShowAddExpenseModal('create')}
-                  onImportReport={() => setShowExpenseReportUpload(true)}
                   onEdit={(expense) => setShowAddExpenseModal(expense)}
                   onDelete={(expenseId) => {
                     setConfirmDialog({
@@ -1470,6 +1470,7 @@ export default function DulinProperties() {
                         { id: 'byType', emoji: '📁' },
                         { id: 'byProperty', emoji: '🏠' },
                         { id: 'all', emoji: '📄' },
+                        { id: 'import', emoji: '📥' },
                       ].map(tab => (
                         <button key={tab.id} onClick={() => setDocumentViewMode(tab.id)}
                           className={`px-3 md:px-4 py-2 rounded-xl font-medium transition text-base md:text-lg text-center ${
@@ -1585,6 +1586,17 @@ export default function DulinProperties() {
                         );
                       })}
                     </div>
+                  )}
+
+                  {/* Import */}
+                  {documentViewMode === 'import' && (
+                    <DocumentImport
+                      properties={properties}
+                      expenses={expenses}
+                      addExpense={addExpense}
+                      addRentPayment={addRentPayment}
+                      showToast={showToast}
+                    />
                   )}
                 </div>
               )}
