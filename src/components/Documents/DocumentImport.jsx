@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { Upload, ChevronDown, Check, X, AlertCircle, FileText } from 'lucide-react';
-import { expenseCategories } from '../../constants';
+import { expenseCategories, incomeCategories } from '../../constants';
 import { formatCurrency } from '../../utils';
 
 /**
@@ -189,6 +189,7 @@ function parseBHFeb2026(properties) {
         propertyHint: prop.address,
         sourceDocument: 'Barnett & Hill',
         flowType: item.flow,
+        incomeCategory: item.flow === 'income' ? 'rent' : undefined,
         selected: true,
         imported: false,
       });
@@ -268,6 +269,7 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
           month: entry.date ? entry.date.substring(0, 7) : '',
           datePaid: entry.date,
           status: 'paid',
+          category: entry.incomeCategory || 'rent',
           notes: `Imported from ${entry.sourceDocument}`,
           sourceDocument: entry.sourceDocument,
         });
@@ -497,16 +499,29 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
                           )}
                         </td>
                         <td className="px-3 py-2">
-                          <select
-                            value={entry.category || 'other'}
-                            onChange={(e) => updateEntry(idx, 'category', e.target.value)}
-                            className="text-[10px] px-1.5 py-1 bg-white/[0.05] border border-white/[0.08] rounded-lg text-white/60 focus:outline-none"
-                            disabled={entry.imported || entry.flowType === 'income'}
-                          >
-                            {expenseCategories.map(cat => (
-                              <option key={cat.value} value={cat.value}>{cat.emoji} {cat.label}</option>
-                            ))}
-                          </select>
+                          {entry.flowType === 'income' ? (
+                            <select
+                              value={entry.incomeCategory || 'rent'}
+                              onChange={(e) => updateEntry(idx, 'incomeCategory', e.target.value)}
+                              className="text-[10px] px-1.5 py-1 bg-emerald-500/[0.08] border border-emerald-500/20 rounded-lg text-emerald-400/70 focus:outline-none"
+                              disabled={entry.imported}
+                            >
+                              {incomeCategories.map(cat => (
+                                <option key={cat.value} value={cat.value}>{cat.emoji} {cat.label}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <select
+                              value={entry.category || 'other'}
+                              onChange={(e) => updateEntry(idx, 'category', e.target.value)}
+                              className="text-[10px] px-1.5 py-1 bg-white/[0.05] border border-white/[0.08] rounded-lg text-white/60 focus:outline-none"
+                              disabled={entry.imported}
+                            >
+                              {expenseCategories.map(cat => (
+                                <option key={cat.value} value={cat.value}>{cat.emoji} {cat.label}</option>
+                              ))}
+                            </select>
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           <select
