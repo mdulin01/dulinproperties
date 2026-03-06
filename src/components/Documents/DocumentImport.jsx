@@ -228,6 +228,108 @@ function parseFFBFeb2026() {
   }));
 }
 
+/**
+ * Generate pre-parsed entries from Absolute RE Feb 2026 owner packet.
+ * 12 properties with rent, mgmt fees, repairs, late fees, and distributions.
+ */
+function parseAbsoluteFeb2026(properties) {
+  const absData = [
+    { address: '1329 S 11th St', unit: 'A', items: [
+      { flow: 'income', desc: 'Rent Income - February 2026 (Unit A)', amount: 728.33, date: '2026-02-01', tenant: 'Jaime B. Salazar' },
+      { flow: 'expense', desc: 'Electricity - Unit A', amount: 53.56, date: '2026-02-01', cat: 'utilities', vendor: 'Electric Company' },
+      { flow: 'expense', desc: 'Plumbing Repair - Unit A', amount: 98, date: '2026-02-01', cat: 'plumbing', vendor: 'Plumber' },
+      { flow: 'expense', desc: 'Cleaning - Unit A', amount: 55, date: '2026-02-01', cat: 'cleaning', vendor: 'Cleaning Service' },
+      { flow: 'expense', desc: 'Management fees - 02/2026 (Unit A)', amount: 72.83, date: '2026-02-10', cat: 'management-fee', vendor: 'Absolute RE' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026 (Unit A)', amount: 255.44, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Absolute RE' },
+    ]},
+    { address: '1329 S 11th St', unit: 'B', items: [
+      { flow: 'income', desc: 'Rent Income - February 2026 (Unit B)', amount: 725, date: '2026-02-01', tenant: 'Byron C. Plummer' },
+      { flow: 'expense', desc: 'Repairs - Unit B', amount: 165, date: '2026-02-01', cat: 'repair', vendor: 'Repair Service' },
+      { flow: 'expense', desc: 'Management fees - 02/2026 (Unit B)', amount: 72.50, date: '2026-02-10', cat: 'management-fee', vendor: 'Absolute RE' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026 (Unit B)', amount: 487.50, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Absolute RE' },
+    ]},
+    { address: '1357 Sammons St', items: [
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 1000, date: '2026-02-01', tenant: 'Michelle Arrendondo' },
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 100, date: '2026-02-10', cat: 'management-fee', vendor: 'Absolute RE' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 900, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Absolute RE' },
+    ]},
+    { address: '1725 Partridge Pl', items: [
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 1600, date: '2026-02-01', tenant: 'Alfreda O. Colbert' },
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 160, date: '2026-02-10', cat: 'management-fee', vendor: 'Absolute RE' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 1429.76, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Absolute RE' },
+    ]},
+    { address: '2234 Bel Air Dr', items: [
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 895, date: '2026-02-01', tenant: 'Lisa Polk' },
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 89.50, date: '2026-02-10', cat: 'management-fee', vendor: 'Absolute RE' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 805.50, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Absolute RE' },
+    ]},
+    { address: '3510 Brook Hollow Dr', items: [
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 1550, date: '2026-02-01', tenant: 'Roberto Garcia' },
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 155, date: '2026-02-10', cat: 'management-fee', vendor: 'Absolute RE' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 1395, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Absolute RE' },
+    ]},
+    { address: '5297 Taos Dr', items: [
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 750, date: '2026-02-01', tenant: 'Linda Gray' },
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 75, date: '2026-02-10', cat: 'management-fee', vendor: 'Absolute RE' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 675, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Absolute RE' },
+    ]},
+    { address: '5341 Pueblo Dr', items: [
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 975, date: '2026-02-01', tenant: 'Joe C. Rubalicado' },
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 97.50, date: '2026-02-10', cat: 'management-fee', vendor: 'Absolute RE' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 877.50, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Absolute RE' },
+    ]},
+    { address: '5350 Pueblo Dr', items: [
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 1250, date: '2026-02-01', tenant: 'Morgan A. Huff' },
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 125, date: '2026-02-10', cat: 'management-fee', vendor: 'Absolute RE' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 1125, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Absolute RE' },
+    ]},
+    { address: '5397 Pueblo Dr', items: [
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 1150, date: '2026-02-01', tenant: 'David A. Saucedo' },
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 115, date: '2026-02-10', cat: 'management-fee', vendor: 'Absolute RE' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 1035, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Absolute RE' },
+    ]},
+    { address: '5490 Questa Dr', items: [
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 900, date: '2026-02-01', tenant: 'Courtney A. Strong' },
+      { flow: 'income', desc: 'Late Fee - February 2026', amount: 95, date: '2026-02-01', tenant: 'Courtney A. Strong', incCat: 'late-fee' },
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 90, date: '2026-02-10', cat: 'management-fee', vendor: 'Absolute RE' },
+      { flow: 'expense', desc: 'Late Fee Management Charge - 02/2026', amount: 9.50, date: '2026-02-10', cat: 'management-fee', vendor: 'Absolute RE' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 895.50, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Absolute RE' },
+    ]},
+    { address: '5209 Springbrook Dr', items: [
+      { flow: 'income', desc: 'Rent Income - February 2026', amount: 800, date: '2026-02-01', tenant: 'Terry Henry' },
+      { flow: 'expense', desc: 'Management fees - 02/2026', amount: 80, date: '2026-02-10', cat: 'management-fee', vendor: 'Absolute RE' },
+      { flow: 'expense', desc: 'Owner Distribution - 02/2026', amount: 720, date: '2026-02-10', cat: 'owner-distribution', vendor: 'Absolute RE' },
+    ]},
+  ];
+
+  const entries = [];
+  let idx = 0;
+  for (const prop of absData) {
+    const matched = matchProperty(prop.address, properties);
+    for (const item of prop.items) {
+      const label = prop.unit ? `${prop.address} (${prop.unit})` : prop.address;
+      entries.push({
+        id: `abs-feb26-${idx++}`,
+        description: item.desc,
+        amount: item.amount,
+        date: item.date,
+        category: item.cat || 'other',
+        vendor: item.vendor || '',
+        tenantName: item.tenant || '',
+        propertyId: matched ? String(matched.id) : '',
+        propertyName: matched ? `${matched.emoji || '🏠'} ${matched.name}` : `⚠️ ${label}`,
+        propertyHint: label,
+        sourceDocument: 'Absolute',
+        flowType: item.flow,
+        incomeCategory: item.flow === 'income' ? (item.incCat || 'rent') : undefined,
+        selected: true,
+        imported: false,
+      });
+    }
+  }
+  return entries;
+}
+
 export default function DocumentImport({ properties, expenses, addExpense, addRentPayment, showToast, onClose }) {
   const [activeSource, setActiveSource] = useState(null);
   const [entries, setEntries] = useState([]); // parsed entries for review
@@ -332,6 +434,7 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
                   setActiveSource(src.id);
                   // Auto-load pre-parsed Feb 2026 data if available
                   if (src.id === 'barnett-hill') setEntries(parseBHFeb2026(properties));
+                  else if (src.id === 'absolute') setEntries(parseAbsoluteFeb2026(properties));
                   else if (src.id === 'ffb-bank') setEntries(parseFFBFeb2026());
                   else setEntries([]);
                 }}
