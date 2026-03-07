@@ -118,6 +118,8 @@ export default function DulinProperties() {
   const [showAddNewMenu, setShowAddNewMenu] = useState(false);
   const [showMobileSectionDropdown, setShowMobileSectionDropdown] = useState(false);
   const [expandedMonths, setExpandedMonths] = useState({});
+  const [monthlySummaryCollapsed, setMonthlySummaryCollapsed] = useState(false);
+  const [monthlyReportMonth, setMonthlyReportMonth] = useState(null); // YYYY-MM string for the report view
 
   // Search
   const [showSearch, setShowSearch] = useState(false);
@@ -1083,9 +1085,16 @@ export default function DulinProperties() {
 
                         {/* Monthly summary table */}
                         <div className="bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden mb-6">
-                          <div className="px-4 py-3 border-b border-white/5">
-                            <h3 className="text-sm font-semibold text-white/70">{currentYear} Monthly Summary</h3>
+                          <div
+                            className="px-4 py-3 border-b border-white/5 flex items-center justify-between cursor-pointer hover:bg-white/[0.02] transition"
+                            onClick={() => setMonthlySummaryCollapsed(prev => !prev)}
+                          >
+                            <h3 className="text-sm font-semibold text-white/70 flex items-center gap-2">
+                              <ChevronDown className={`w-4 h-4 text-white/40 transition-transform ${monthlySummaryCollapsed ? '-rotate-90' : ''}`} />
+                              {currentYear} Monthly Summary
+                            </h3>
                           </div>
+                          {!monthlySummaryCollapsed && (
                           <div className="divide-y divide-white/5">
                             {/* Header */}
                             <div className="grid grid-cols-6 gap-2 px-4 py-2 text-[10px] font-semibold text-white/30 uppercase tracking-wider">
@@ -1096,7 +1105,7 @@ export default function DulinProperties() {
                               <span className="text-right">Net</span>
                               <span className="text-right">Distributed</span>
                             </div>
-                            {months.map(m => {
+                            {months.filter(m => m.income > 0 || m.expenses > 0 || m.dist > 0 || m.isCurrent).map(m => {
                               const isExpanded = expandedMonths[m.monthStr];
                               const hasData = m.isPast && (m.income > 0 || m.expenses > 0 || m.dist > 0);
                               const hasBreakdown = m.byManager && m.byManager.length > 0;
@@ -1167,8 +1176,154 @@ export default function DulinProperties() {
                               <span className="text-sm text-right font-bold text-blue-400">{formatCurrency(ytdDistributions)}</span>
                             </div>
                           </div>
+                          )}
                         </div>
                       </>
+                    );
+                  })()}
+
+                  {/* Monthly Reports — grouped by management company, like mom's spreadsheet */}
+                  {(() => {
+                    const yearStr = String(new Date().getFullYear());
+                    const currentMonthIdx = new Date().getMonth();
+                    // Build list of months with data for the picker
+                    const reportMonths = Array.from({ length: 12 }, (_, i) => {
+                      const ms = `${yearStr}-${String(i + 1).padStart(2, '0')}`;
+                      const label = new Date(parseInt(yearStr), i).toLocaleString('en-US', { month: 'long' });
+                      const hasIncome = rentPayments.some(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(ms));
+                      const hasExpenses = expenses.some(e => (e.date || '').startsWith(ms));
+                      return { ms, label, hasData: hasIncome || hasExpenses, isPast: i <= currentMonthIdx };
+                    }).filter(m => m.hasData);
+
+                    const selectedMonth = monthlyReportMonth || (reportMonths.length > 0 ? reportMonths[reportMonths.length - 1].ms : null);
+                    if (!selectedMonth) return null;
+
+                    const selectedLabel = new Date(parseInt(selectedMonth.split('-')[0]), parseInt(selectedMonth.split('-')[1]) - 1)
+                      .toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
+                    // Gather data for selected month
+                    const getManager = (color) => {
+                      if (color === 'purple') return 'Barnett & Hill';
+                      if (color === 'teal') return 'Absolute';
+                      return 'Dianne Dulin';
+                    };
+
+                    const mgrOrder = ['Absolute', 'Barnett & Hill', 'Dianne Dulin'];
+                    const mgrEmoji = { 'Absolute': '🏠', 'Barnett & Hill': '🏢', 'Dianne Dulin': '👩' };
+                    const mgrColors = { 'Barnett & Hill': 'text-purple-400 border-purple-500/20 bg-purple-500/10', 'Absolute': 'text-teal-400 border-teal-500/20 bg-teal-500/10', 'Dianne Dulin': 'text-pink-400 border-pink-500/20 bg-pink-500/10' };
+
+                    const monthRent = rentPayments.filter(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(selectedMonth));
+                    const monthExp = expenses.filter(e => (e.date || '').startsWith(selectedMonth));
+
+                    const reportData = mgrOrder.map(mgr => {
+                      const mgrProps = properties.filter(p => getManager(p.color) === mgr);
+                      const propRows = mgrProps.map(p => {
+                        const pid = String(p.id);
+                        const rent = monthRent.filter(r => String(r.propertyId) === pid).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+                        const pExp = monthExp.filter(e => String(e.propertyId) === pid);
+                        const mgmtFee = pExp.filter(e => e.category === 'management-fee').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                        const repairs = pExp.filter(e => ['repair', 'plumbing', 'electrical', 'hvac', 'appliance'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                        const utilities = pExp.filter(e => ['utilities', 'internet'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                        const dist = pExp.filter(e => e.category === 'owner-distribution').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                        const other = pExp.filter(e => !['management-fee', 'owner-distribution', 'repair', 'plumbing', 'electrical', 'hvac', 'appliance', 'utilities', 'internet'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                        const hasActivity = rent > 0 || mgmtFee > 0 || repairs > 0 || utilities > 0 || dist > 0 || other > 0;
+                        return { name: `${p.emoji || '🏠'} ${p.name}`, rent, mgmtFee, repairs, utilities, dist, other, hasActivity };
+                      }).filter(r => r.hasActivity);
+
+                      const totals = propRows.reduce((t, r) => ({
+                        rent: t.rent + r.rent, mgmtFee: t.mgmtFee + r.mgmtFee, repairs: t.repairs + r.repairs,
+                        utilities: t.utilities + r.utilities, dist: t.dist + r.dist, other: t.other + r.other,
+                      }), { rent: 0, mgmtFee: 0, repairs: 0, utilities: 0, dist: 0, other: 0 });
+
+                      return { manager: mgr, props: propRows, totals, hasData: propRows.length > 0 };
+                    }).filter(g => g.hasData);
+
+                    const grandTotal = reportData.reduce((t, g) => ({
+                      rent: t.rent + g.totals.rent, mgmtFee: t.mgmtFee + g.totals.mgmtFee,
+                      repairs: t.repairs + g.totals.repairs, utilities: t.utilities + g.totals.utilities,
+                      dist: t.dist + g.totals.dist, other: t.other + g.totals.other,
+                    }), { rent: 0, mgmtFee: 0, repairs: 0, utilities: 0, dist: 0, other: 0 });
+
+                    return (
+                      <div className="bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden mb-6">
+                        <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+                          <h3 className="text-sm font-semibold text-white/70">Monthly Report</h3>
+                          <div className="flex gap-1.5">
+                            {reportMonths.map(rm => (
+                              <button
+                                key={rm.ms}
+                                onClick={() => setMonthlyReportMonth(rm.ms)}
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition ${
+                                  (selectedMonth === rm.ms) ? 'bg-amber-500 text-white' : 'bg-white/10 text-white/50 hover:bg-white/20'
+                                }`}
+                              >
+                                {rm.label.substring(0, 3)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="px-4 py-2 border-b border-white/5 bg-white/[0.01]">
+                          <p className="text-xs text-white/40">{selectedLabel} — By Management Company</p>
+                        </div>
+
+                        {/* Column headers */}
+                        <div className="grid grid-cols-8 gap-1 px-4 py-2 text-[9px] font-semibold text-white/30 uppercase tracking-wider border-b border-white/5">
+                          <span className="col-span-2">Property</span>
+                          <span className="text-right">Rent</span>
+                          <span className="text-right">Mgmt Fee</span>
+                          <span className="text-right">Repairs</span>
+                          <span className="text-right">Utilities</span>
+                          <span className="text-right">Other</span>
+                          <span className="text-right">Owner Dist</span>
+                        </div>
+
+                        {reportData.map(group => {
+                          const gc = mgrColors[group.manager] || 'text-white/50 border-white/10 bg-white/5';
+                          return (
+                            <div key={group.manager}>
+                              {/* Manager header */}
+                              <div className={`px-4 py-2 border-b border-white/5 ${gc.split(' ')[2] || 'bg-white/5'}`}>
+                                <span className={`text-xs font-bold ${gc.split(' ')[0]}`}>
+                                  {mgrEmoji[group.manager] || '📋'} {group.manager}
+                                </span>
+                              </div>
+                              {/* Property rows */}
+                              {group.props.map((row, ri) => (
+                                <div key={ri} className="grid grid-cols-8 gap-1 px-4 py-1.5 border-b border-white/[0.03] hover:bg-white/[0.02]">
+                                  <span className="col-span-2 text-xs text-white/70 truncate">{row.name}</span>
+                                  <span className="text-xs text-right text-emerald-400/80">{row.rent > 0 ? formatCurrency(row.rent) : '—'}</span>
+                                  <span className="text-xs text-right text-yellow-400/60">{row.mgmtFee > 0 ? formatCurrency(row.mgmtFee) : '—'}</span>
+                                  <span className="text-xs text-right text-red-400/60">{row.repairs > 0 ? formatCurrency(row.repairs) : '—'}</span>
+                                  <span className="text-xs text-right text-orange-400/60">{row.utilities > 0 ? formatCurrency(row.utilities) : '—'}</span>
+                                  <span className="text-xs text-right text-white/40">{row.other > 0 ? formatCurrency(row.other) : '—'}</span>
+                                  <span className="text-xs text-right text-blue-400/60">{row.dist > 0 ? formatCurrency(row.dist) : '—'}</span>
+                                </div>
+                              ))}
+                              {/* Manager subtotal */}
+                              <div className="grid grid-cols-8 gap-1 px-4 py-1.5 bg-white/[0.02] border-b border-white/5">
+                                <span className="col-span-2 text-[10px] font-semibold text-white/40 uppercase">Subtotal</span>
+                                <span className="text-[10px] text-right font-semibold text-emerald-400/60">{group.totals.rent > 0 ? formatCurrency(group.totals.rent) : '—'}</span>
+                                <span className="text-[10px] text-right font-semibold text-yellow-400/40">{group.totals.mgmtFee > 0 ? formatCurrency(group.totals.mgmtFee) : '—'}</span>
+                                <span className="text-[10px] text-right font-semibold text-red-400/40">{group.totals.repairs > 0 ? formatCurrency(group.totals.repairs) : '—'}</span>
+                                <span className="text-[10px] text-right font-semibold text-orange-400/40">{group.totals.utilities > 0 ? formatCurrency(group.totals.utilities) : '—'}</span>
+                                <span className="text-[10px] text-right font-semibold text-white/30">{group.totals.other > 0 ? formatCurrency(group.totals.other) : '—'}</span>
+                                <span className="text-[10px] text-right font-semibold text-blue-400/40">{group.totals.dist > 0 ? formatCurrency(group.totals.dist) : '—'}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* Grand total */}
+                        <div className="grid grid-cols-8 gap-1 px-4 py-3 bg-white/[0.04] border-t border-white/10">
+                          <span className="col-span-2 text-xs font-bold text-white">Month Total</span>
+                          <span className="text-xs text-right font-bold text-emerald-400">{formatCurrency(grandTotal.rent)}</span>
+                          <span className="text-xs text-right font-bold text-yellow-400/70">{formatCurrency(grandTotal.mgmtFee)}</span>
+                          <span className="text-xs text-right font-bold text-red-400">{formatCurrency(grandTotal.repairs)}</span>
+                          <span className="text-xs text-right font-bold text-orange-400">{formatCurrency(grandTotal.utilities)}</span>
+                          <span className="text-xs text-right font-bold text-white/50">{formatCurrency(grandTotal.other)}</span>
+                          <span className="text-xs text-right font-bold text-blue-400">{formatCurrency(grandTotal.dist)}</span>
+                        </div>
+                      </div>
                     );
                   })()}
 
