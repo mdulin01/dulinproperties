@@ -199,16 +199,111 @@ function parseBHFeb2026(properties) {
 }
 
 /**
+ * Generate pre-parsed entries from FFB Jan 2026 bank statement.
+ * Account 4127835710 (main rental account): deposits, debits, and checks.
+ * Account 4128290410: annuity deposits, insurance, Citi payment, checks.
+ * Account 4127835711: mobile deposit + interest only.
+ */
+function parseFFBJan2026() {
+  const items = [
+    // --- Account 4127835710 – DEPOSITS ---
+    { flow: 'income', desc: 'APTS WalliApartments.com - Rent Deposit', amount: 1600.00, date: '2026-01-05', vendor: 'WalliApartments.com', acct: '...5710' },
+    { flow: 'income', desc: 'Mobile Check Deposit', amount: 895.00, date: '2026-01-06', vendor: '', acct: '...5710' },
+    { flow: 'income', desc: 'APTS HodkiApartments.com - Rent Deposit', amount: 925.00, date: '2026-01-06', vendor: 'HodkiApartments.com', acct: '...5710' },
+    { flow: 'income', desc: 'APTS BerryApartments.com - Rent Deposit', amount: 700.00, date: '2026-01-12', vendor: 'BerryApartments.com', acct: '...5710' },
+    { flow: 'income', desc: 'SIGONFILE Barnett & Hill - Owner Distribution', amount: 7142.83, date: '2026-01-13', vendor: 'Barnett & Hill', acct: '...5710' },
+    { flow: 'income', desc: 'APTS BerryApartments.com - Rent Deposit', amount: 600.00, date: '2026-01-23', vendor: 'BerryApartments.com', acct: '...5710' },
+    { flow: 'income', desc: 'Interest Deposit', amount: 39.79, date: '2026-02-01', vendor: 'FFB Bank', acct: '...5710' },
+    // --- Account 4127835710 – DEBITS ---
+    { flow: 'expense', desc: 'Atmos Energy - Gas (Conf #865)', amount: 25.69, date: '2026-01-12', cat: 'utilities', vendor: 'Atmos Energy', acct: '...5710' },
+    { flow: 'expense', desc: 'Atmos Energy - Gas (Conf #866)', amount: 221.02, date: '2026-01-12', cat: 'utilities', vendor: 'Atmos Energy', acct: '...5710' },
+    { flow: 'expense', desc: 'ZEL* Marnie Montelongo', amount: 150.00, date: '2026-01-14', cat: 'other', vendor: 'Marnie Montelongo', acct: '...5710' },
+    { flow: 'expense', desc: 'Lowes - Repairs/Supplies', amount: 1169.95, date: '2026-01-20', cat: 'repair', vendor: 'Lowes', checkNum: '90172', acct: '...5710' },
+    { flow: 'expense', desc: 'Vexus - Internet', amount: 108.40, date: '2026-01-21', cat: 'internet', vendor: 'Vexus', checkNum: '90173', acct: '...5710' },
+    // --- Account 4127835710 – CHECKS ---
+    { flow: 'expense', desc: 'Check #6443', amount: 150.00, date: '2026-01-09', cat: 'other', vendor: '', checkNum: '6443', acct: '...5710' },
+    { flow: 'expense', desc: 'Check #6444', amount: 6500.00, date: '2026-01-07', cat: 'other', vendor: '', checkNum: '6444', acct: '...5710' },
+    { flow: 'expense', desc: 'Check #6445', amount: 1314.00, date: '2026-01-09', cat: 'other', vendor: '', checkNum: '6445', acct: '...5710' },
+    { flow: 'expense', desc: 'Check #6446', amount: 55.00, date: '2026-01-21', cat: 'other', vendor: '', checkNum: '6446', acct: '...5710' },
+    { flow: 'expense', desc: 'Check #6447', amount: 141.65, date: '2026-01-21', cat: 'other', vendor: '', checkNum: '6447', acct: '...5710' },
+    { flow: 'expense', desc: 'Check #6448', amount: 162.76, date: '2026-01-26', cat: 'other', vendor: '', checkNum: '6448', acct: '...5710' },
+    // --- Account 4127835711 – DEPOSITS ---
+    { flow: 'income', desc: 'Mobile Check Deposit', amount: 205.81, date: '2026-01-12', vendor: '', acct: '...5711' },
+    { flow: 'income', desc: 'Interest Deposit', amount: 1.16, date: '2026-02-01', vendor: 'FFB Bank', acct: '...5711' },
+    // --- Account 4128290410 – DEPOSITS ---
+    { flow: 'income', desc: 'Annuity - T-C IND&INST INC (Dianne Flint)', amount: 119.71, date: '2026-01-05', vendor: 'T-C IND&INST INC', acct: '...0410' },
+    { flow: 'income', desc: 'Annuity - T-C IND&INST INC (Dianne Flint)', amount: 155.80, date: '2026-01-05', vendor: 'T-C IND&INST INC', acct: '...0410' },
+    { flow: 'income', desc: 'Interest Deposit', amount: 3.42, date: '2026-02-01', vendor: 'FFB Bank', acct: '...0410' },
+    // --- Account 4128290410 – DEBITS ---
+    { flow: 'expense', desc: 'Bill Paid - Citibusiness (Conf #867)', amount: 2020.49, date: '2026-01-13', cat: 'other', vendor: 'Citibusiness', acct: '...0410' },
+    // --- Account 4128290410 – CHECKS ---
+    { flow: 'expense', desc: 'Check #9872', amount: 300.00, date: '2026-01-02', cat: 'other', vendor: '', checkNum: '9872', acct: '...0410' },
+    { flow: 'expense', desc: 'Check #9874', amount: 85.00, date: '2026-01-21', cat: 'other', vendor: '', checkNum: '9874', acct: '...0410' },
+  ];
+
+  return items.map((item, i) => ({
+    id: `ffb-jan26-${i}`,
+    description: item.desc,
+    amount: item.amount,
+    date: item.date,
+    category: item.cat || '',
+    vendor: item.vendor || '',
+    checkNumber: item.checkNum || '',
+    account: item.acct || '',
+    tenantName: '',
+    propertyId: '',
+    propertyName: '',
+    sourceDocument: 'FFB Bank',
+    flowType: item.flow,
+    incomeCategory: item.flow === 'income' ? 'rent' : undefined,
+    selected: true,
+    imported: false,
+  }));
+}
+
+/**
  * Generate pre-parsed entries from FFB Feb 2026 bank statement.
- * Only utilities + repairs (Atmos Energy, Lowes, Vexus).
+ * Account 4127835710 (main rental account): deposits, debits, and checks.
+ * Account 4128290410: annuity deposits, transfers, insurance, checks.
+ * Account 4127835711: interest only.
  */
 function parseFFBFeb2026() {
   const items = [
-    { desc: 'Atmos Energy - Gas', amount: 25.69, date: '2026-02-02', cat: 'utilities', vendor: 'Atmos Energy' },
-    { desc: 'Atmos Energy - Gas', amount: 281.46, date: '2026-02-02', cat: 'utilities', vendor: 'Atmos Energy' },
-    { desc: 'Lowes - Repairs/Supplies', amount: 805.07, date: '2026-02-09', cat: 'repair', vendor: 'Lowes' },
-    { desc: 'Atmos Energy - Gas', amount: 271.22, date: '2026-02-20', cat: 'utilities', vendor: 'Atmos Energy' },
-    { desc: 'Vexus - Internet', amount: 108.40, date: '2026-02-25', cat: 'internet', vendor: 'Vexus' },
+    // --- Account 4127835710 – DEPOSITS ---
+    { flow: 'income', desc: 'SIGONFILE Absolute Real Es - Owner Distribution', amount: 836.10, date: '2026-02-03', vendor: 'Absolute RE', acct: '...5710' },
+    { flow: 'income', desc: 'SIGONFILE Absolute Real Es - Owner Distribution', amount: 9130.35, date: '2026-02-03', vendor: 'Absolute RE', acct: '...5710' },
+    { flow: 'income', desc: 'APTS HodkiApartments.com - Rent Deposit', amount: 925.00, date: '2026-02-05', vendor: 'HodkiApartments.com', acct: '...5710' },
+    { flow: 'income', desc: 'Mobile Check Deposit', amount: 895.00, date: '2026-02-06', vendor: '', acct: '...5710' },
+    { flow: 'income', desc: 'APTS BerryApartments.com - Rent Deposit', amount: 800.00, date: '2026-02-06', vendor: 'BerryApartments.com', acct: '...5710' },
+    { flow: 'income', desc: 'APTS WalliApartments.com - Rent Deposit', amount: 1625.00, date: '2026-02-06', vendor: 'WalliApartments.com', acct: '...5710' },
+    { flow: 'income', desc: 'APTS BerryApartments.com - Rent Deposit', amount: 200.00, date: '2026-02-11', vendor: 'BerryApartments.com', acct: '...5710' },
+    { flow: 'income', desc: 'SIGONFILE Barnett & Hill - Owner Distribution', amount: 7744.70, date: '2026-02-11', vendor: 'Barnett & Hill', acct: '...5710' },
+    { flow: 'income', desc: 'SIGONFILE Absolute Real Es - Owner Distribution', amount: 10601.20, date: '2026-02-23', vendor: 'Absolute RE', acct: '...5710' },
+    { flow: 'income', desc: 'Interest Deposit', amount: 39.32, date: '2026-03-01', vendor: 'FFB Bank', acct: '...5710' },
+    // --- Account 4127835710 – DEBITS ---
+    { flow: 'expense', desc: 'Atmos Energy - Gas (Conf #872)', amount: 25.69, date: '2026-02-02', cat: 'utilities', vendor: 'Atmos Energy', acct: '...5710' },
+    { flow: 'expense', desc: 'Atmos Energy - Gas (Conf #871)', amount: 281.46, date: '2026-02-02', cat: 'utilities', vendor: 'Atmos Energy', acct: '...5710' },
+    { flow: 'expense', desc: 'QBooks Online - Intuit', amount: 122.59, date: '2026-02-05', cat: 'software', vendor: 'Intuit', acct: '...5710' },
+    { flow: 'expense', desc: 'Bill Paid - Citibusiness (Conf #878)', amount: 4786.16, date: '2026-02-06', cat: 'other', vendor: 'Citibusiness', acct: '...5710' },
+    { flow: 'expense', desc: 'Lowes - Repairs/Supplies', amount: 805.07, date: '2026-02-09', cat: 'repair', vendor: 'Lowes', checkNum: '90176', acct: '...5710' },
+    { flow: 'expense', desc: 'Atmos Energy - Gas (Conf #881)', amount: 271.22, date: '2026-02-20', cat: 'utilities', vendor: 'Atmos Energy', acct: '...5710' },
+    { flow: 'expense', desc: 'Vexus - Internet', amount: 108.40, date: '2026-02-25', cat: 'internet', vendor: 'Vexus', checkNum: '90179', acct: '...5710' },
+    // --- Account 4127835710 – CHECKS ---
+    { flow: 'expense', desc: 'Check #6449', amount: 120.84, date: '2026-02-09', cat: 'other', vendor: '', checkNum: '6449', acct: '...5710' },
+    { flow: 'expense', desc: 'Check #6450', amount: 100.00, date: '2026-02-05', cat: 'other', vendor: '', checkNum: '6450', acct: '...5710' },
+    { flow: 'expense', desc: 'Check #6451', amount: 126.02, date: '2026-02-23', cat: 'other', vendor: '', checkNum: '6451', acct: '...5710' },
+    { flow: 'expense', desc: 'Check #6452', amount: 657.00, date: '2026-02-27', cat: 'other', vendor: '', checkNum: '6452', acct: '...5710' },
+    { flow: 'expense', desc: 'Check #6455', amount: 500.00, date: '2026-02-26', cat: 'other', vendor: '', checkNum: '6455', acct: '...5710' },
+    // --- Account 4127835711 – DEPOSITS ---
+    { flow: 'income', desc: 'Interest Deposit', amount: 1.02, date: '2026-03-01', vendor: 'FFB Bank', acct: '...5711' },
+    // --- Account 4128290410 – DEPOSITS ---
+    { flow: 'income', desc: 'Annuity - T-C IND&INST INC (Dianne Flint)', amount: 119.71, date: '2026-02-04', vendor: 'T-C IND&INST INC', acct: '...0410' },
+    { flow: 'income', desc: 'Annuity - T-C IND&INST INC (Dianne Flint)', amount: 155.80, date: '2026-02-04', vendor: 'T-C IND&INST INC', acct: '...0410' },
+    { flow: 'income', desc: 'Interest Deposit', amount: 2.43, date: '2026-03-01', vendor: 'FFB Bank', acct: '...0410' },
+    // --- Account 4128290410 – DEBITS ---
+    { flow: 'expense', desc: 'Transfer to ...3110 (Conf #29370709)', amount: 1000.00, date: '2026-02-11', cat: 'other', vendor: 'Internal Transfer', acct: '...0410' },
+    { flow: 'expense', desc: 'Transfer to ...3110 (Conf #29417225)', amount: 1000.00, date: '2026-02-17', cat: 'other', vendor: 'Internal Transfer', acct: '...0410' },
+    { flow: 'expense', desc: 'State Farm Insurance - Auto/Life/Fire/Health (Conf #882)', amount: 3109.00, date: '2026-02-25', cat: 'insurance', vendor: 'State Farm', acct: '...0410' },
   ];
 
   return items.map((item, i) => ({
@@ -216,13 +311,16 @@ function parseFFBFeb2026() {
     description: item.desc,
     amount: item.amount,
     date: item.date,
-    category: item.cat,
-    vendor: item.vendor,
+    category: item.cat || '',
+    vendor: item.vendor || '',
+    checkNumber: item.checkNum || '',
+    account: item.acct || '',
     tenantName: '',
     propertyId: '',
     propertyName: '',
     sourceDocument: 'FFB Bank',
-    flowType: 'expense',
+    flowType: item.flow,
+    incomeCategory: item.flow === 'income' ? 'rent' : undefined,
     selected: true,
     imported: false,
   }));
@@ -335,6 +433,7 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
   const [entries, setEntries] = useState([]); // parsed entries for review
   const [importing, setImporting] = useState(false);
   const [importedCount, setImportedCount] = useState(0);
+  const [ffbMonth, setFfbMonth] = useState(null); // 'jan26' | 'feb26' for FFB sub-selector
 
   // Toggle entry selected state
   const toggleEntry = useCallback((idx) => {
@@ -391,8 +490,9 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
           amount: entry.amount,
           date: entry.date,
           vendor: entry.vendor || '',
-          notes: entry.notes || '',
+          notes: entry.checkNumber ? `Check #${entry.checkNumber}` : (entry.notes || ''),
           sourceDocument: entry.sourceDocument,
+          checkNumber: entry.checkNumber || '',
         });
       }
       count++;
@@ -438,10 +538,10 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
                 key={src.id}
                 onClick={() => {
                   setActiveSource(src.id);
-                  // Auto-load pre-parsed Feb 2026 data if available
+                  // Auto-load pre-parsed data if available
                   if (src.id === 'barnett-hill') setEntries(parseBHFeb2026(properties));
                   else if (src.id === 'absolute') setEntries(parseAbsoluteFeb2026(properties));
-                  else if (src.id === 'ffb-bank') setEntries(parseFFBFeb2026());
+                  else if (src.id === 'ffb-bank') { setFfbMonth(null); setEntries([]); }
                   else setEntries([]);
                 }}
                 className={`${c.bg} border ${c.border} rounded-2xl p-5 text-center hover:brightness-110 transition group`}
@@ -468,7 +568,7 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => { setActiveSource(null); setEntries([]); setImportedCount(0); }}
+            onClick={() => { setActiveSource(null); setEntries([]); setImportedCount(0); setFfbMonth(null); }}
             className="text-white/50 hover:text-white transition text-sm"
           >
             ← Back
@@ -481,8 +581,27 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
         </div>
       </div>
 
+      {/* FFB Bank month picker */}
+      {activeSource === 'ffb-bank' && !ffbMonth && entries.length === 0 && (
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          {[
+            { id: 'jan26', label: 'January 2026', sub: '1/01 – 1/30', parseFn: parseFFBJan2026 },
+            { id: 'feb26', label: 'February 2026', sub: '2/02 – 2/27', parseFn: parseFFBFeb2026 },
+          ].map(m => (
+            <button
+              key={m.id}
+              onClick={() => { setFfbMonth(m.id); setEntries(m.parseFn()); }}
+              className={`${c.bg} border ${c.border} rounded-xl p-4 text-center hover:brightness-110 transition`}
+            >
+              <span className={`text-sm font-semibold ${c.text}`}>{m.label}</span>
+              <p className="text-[10px] text-white/30 mt-1">{m.sub}</p>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Upload area (if no entries yet) */}
-      {entries.length === 0 && (
+      {entries.length === 0 && (activeSource !== 'ffb-bank' || ffbMonth) && (
         <div className={`${c.bg} border-2 border-dashed ${c.border} rounded-2xl p-8 text-center mb-4`}>
           <Upload className={`w-8 h-8 ${c.text} mx-auto mb-3 opacity-60`} />
           <p className={`text-sm font-medium ${c.text} mb-1`}>Upload {source.label} Statement</p>
@@ -601,7 +720,16 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
                         <td className="px-3 py-2 text-xs text-white/60 whitespace-nowrap">{entry.date}</td>
                         <td className="px-3 py-2">
                           <span className="text-xs text-white/80">{entry.description}</span>
-                          {entry.tenantName && <span className="block text-[10px] text-white/30">{entry.tenantName}</span>}
+                          {entry.checkNumber && (
+                            <span className="ml-1.5 text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400/70">
+                              #{entry.checkNumber}
+                            </span>
+                          )}
+                          {(entry.tenantName || entry.account) && (
+                            <span className="block text-[10px] text-white/30">
+                              {entry.tenantName}{entry.tenantName && entry.account ? ' · ' : ''}{entry.account ? `Acct ${entry.account}` : ''}
+                            </span>
+                          )}
                           {dupMatches && (
                             <span className="relative group flex items-center gap-1 text-[10px] text-orange-400 mt-0.5 cursor-help">
                               <AlertCircle className="w-3 h-3" /> Possible duplicate
