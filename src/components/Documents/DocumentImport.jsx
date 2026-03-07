@@ -400,13 +400,14 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
     setEntries(prev => prev.map(e => e.selected ? { ...e, imported: true, selected: false } : e));
   }, [entries, addExpense, addRentPayment, showToast]);
 
-  // Check for duplicate: does an expense with similar description+date+amount already exist?
-  const isDuplicate = useCallback((entry) => {
-    return expenses.some(e =>
+  // Find duplicate: return matching existing expense(s) or null
+  const findDuplicate = useCallback((entry) => {
+    const matches = expenses.filter(e =>
       Math.abs((e.amount || 0) - entry.amount) < 0.01 &&
       e.date === entry.date &&
       (e.description || '').toLowerCase().includes((entry.description || '').toLowerCase().substring(0, 20))
     );
+    return matches.length > 0 ? matches : null;
   }, [expenses]);
 
   // Render the source selection cards
@@ -564,14 +565,14 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
                 </thead>
                 <tbody>
                   {entries.map((entry, idx) => {
-                    const dup = isDuplicate(entry);
+                    const dupMatches = findDuplicate(entry);
                     return (
                       <tr
                         key={entry.id}
                         className={`border-b border-white/[0.04] transition ${
                           entry.imported ? 'opacity-30' :
                           entry.selected ? 'bg-white/[0.04]' : 'hover:bg-white/[0.02]'
-                        } ${dup ? 'bg-orange-500/[0.05]' : ''}`}
+                        } ${dupMatches ? 'bg-orange-500/[0.05]' : ''}`}
                       >
                         <td className="px-3 py-2">
                           {entry.imported ? (
@@ -595,9 +596,32 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
                         <td className="px-3 py-2">
                           <span className="text-xs text-white/80">{entry.description}</span>
                           {entry.tenantName && <span className="block text-[10px] text-white/30">{entry.tenantName}</span>}
-                          {dup && (
-                            <span className="flex items-center gap-1 text-[10px] text-orange-400 mt-0.5">
+                          {dupMatches && (
+                            <span className="relative group flex items-center gap-1 text-[10px] text-orange-400 mt-0.5 cursor-help">
                               <AlertCircle className="w-3 h-3" /> Possible duplicate
+                              <span className="hidden group-hover:block absolute left-0 top-full mt-1 z-50 w-72 p-2.5 bg-gray-900 border border-orange-500/30 rounded-lg shadow-xl text-[10px] text-white/80 leading-relaxed">
+                                <span className="block font-semibold text-orange-400 mb-1">
+                                  {dupMatches.length} existing {dupMatches.length === 1 ? 'match' : 'matches'} found:
+                                </span>
+                                {dupMatches.slice(0, 3).map((m, mi) => (
+                                  <span key={mi} className="block border-t border-white/[0.06] pt-1 mt-1">
+                                    <span className="block text-white/60">
+                                      {m.description || m.category || 'No description'}
+                                    </span>
+                                    <span className="block text-white/40">
+                                      {m.date} &middot; ${(m.amount || 0).toFixed(2)}
+                                      {m.propertyName ? ` · ${m.propertyName}` : ''}
+                                      {m.sourceDocument ? ` · via ${m.sourceDocument}` : ''}
+                                    </span>
+                                  </span>
+                                ))}
+                                {dupMatches.length > 3 && (
+                                  <span className="block text-white/30 mt-1">+{dupMatches.length - 3} more</span>
+                                )}
+                                <span className="block text-orange-400/60 mt-1.5 italic">
+                                  Matched on: same date, amount, and similar description
+                                </span>
+                              </span>
                             </span>
                           )}
                         </td>
