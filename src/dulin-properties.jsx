@@ -1467,10 +1467,10 @@ export default function DulinProperties() {
                   <div className="flex gap-1.5 mb-4 items-center justify-between sticky top-[57px] z-20 bg-slate-900/95 backdrop-blur-md py-3 -mx-4 px-4">
                     <div className="flex gap-1.5">
                       {[
+                        { id: 'import', emoji: '📥' },
                         { id: 'byType', emoji: '📁' },
                         { id: 'byProperty', emoji: '🏠' },
                         { id: 'all', emoji: '📄' },
-                        { id: 'import', emoji: '📥' },
                       ].map(tab => (
                         <button key={tab.id} onClick={() => setDocumentViewMode(tab.id)}
                           className={`px-3 md:px-4 py-2 rounded-xl font-medium transition text-base md:text-lg text-center ${

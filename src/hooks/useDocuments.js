@@ -8,7 +8,7 @@ import { useState, useCallback } from 'react';
 export const useDocuments = (currentUser, saveRef, showToast) => {
 
   const [documents, setDocuments] = useState([]);
-  const [documentViewMode, setDocumentViewMode] = useState('byType');
+  const [documentViewMode, setDocumentViewMode] = useState('import');
   const [documentTypeFilter, setDocumentTypeFilter] = useState('all');
   const [documentPropertyFilter, setDocumentPropertyFilter] = useState('all');
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(null);
