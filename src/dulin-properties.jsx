@@ -1203,9 +1203,10 @@ export default function DulinProperties() {
 
                     // Gather data for selected month
                     const getManager = (color) => {
-                      if (color === 'purple') return 'Barnett & Hill';
-                      if (color === 'teal') return 'Absolute';
-                      return 'Dianne Dulin';
+                      if (!color) return 'Absolute';
+                      if (color.includes('purple') || color.includes('violet') || color.includes('indigo')) return 'Barnett & Hill';
+                      if (color.includes('rose') || color.includes('pink')) return 'Dianne Dulin';
+                      return 'Absolute';
                     };
 
                     const mgrOrder = ['Absolute', 'Barnett & Hill', 'Dianne Dulin'];
