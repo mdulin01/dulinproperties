@@ -1198,10 +1198,13 @@ export default function DulinProperties() {
                     const selectedMonth = monthlyReportMonth || (reportMonths.length > 0 ? reportMonths[reportMonths.length - 1].ms : null);
                     if (!selectedMonth) return null;
 
-                    const selectedLabel = new Date(parseInt(selectedMonth.split('-')[0]), parseInt(selectedMonth.split('-')[1]) - 1)
-                      .toLocaleString('en-US', { month: 'long', year: 'numeric' });
+                    const isYtd = selectedMonth === 'ytd';
+                    const selectedLabel = isYtd
+                      ? `${yearStr} Year-to-Date`
+                      : new Date(parseInt(selectedMonth.split('-')[0]), parseInt(selectedMonth.split('-')[1]) - 1)
+                        .toLocaleString('en-US', { month: 'long', year: 'numeric' });
 
-                    // Gather data for selected month
+                    // Gather data for selected month (or full year for YTD)
                     const getManager = (color) => {
                       if (!color) return 'Absolute';
                       if (color.includes('purple') || color.includes('violet') || color.includes('indigo')) return 'Barnett & Hill';
@@ -1213,8 +1216,12 @@ export default function DulinProperties() {
                     const mgrEmoji = { 'Absolute': '🏠', 'Barnett & Hill': '🏢', 'Dianne Dulin': '👩' };
                     const mgrColors = { 'Barnett & Hill': 'text-purple-400 border-purple-500/20 bg-purple-500/10', 'Absolute': 'text-teal-400 border-teal-500/20 bg-teal-500/10', 'Dianne Dulin': 'text-pink-400 border-pink-500/20 bg-pink-500/10' };
 
-                    const monthRent = rentPayments.filter(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(selectedMonth));
-                    const monthExp = expenses.filter(e => (e.date || '').startsWith(selectedMonth));
+                    const monthRent = rentPayments.filter(r => r.status === 'paid' && (isYtd
+                      ? (r.month || r.datePaid || '').startsWith(yearStr)
+                      : (r.month || r.datePaid || '').startsWith(selectedMonth)));
+                    const monthExp = expenses.filter(e => (isYtd
+                      ? (e.date || '').startsWith(yearStr)
+                      : (e.date || '').startsWith(selectedMonth)));
 
                     const reportData = mgrOrder.map(mgr => {
                       const mgrProps = properties.filter(p => getManager(p.color) === mgr);
@@ -1246,24 +1253,38 @@ export default function DulinProperties() {
 
                     return (
                       <div className="bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden mb-6">
-                        <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
-                          <h3 className="text-sm font-semibold text-white/70">Monthly Report</h3>
-                          <div className="flex gap-1.5">
-                            {reportMonths.map(rm => (
-                              <button
-                                key={rm.ms}
-                                onClick={() => setMonthlyReportMonth(rm.ms)}
-                                className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition ${
-                                  (selectedMonth === rm.ms) ? 'bg-amber-500 text-white' : 'bg-white/10 text-white/50 hover:bg-white/20'
-                                }`}
-                              >
-                                {rm.label.substring(0, 3)}
-                              </button>
-                            ))}
+                        <div className="px-4 py-3 border-b border-white/5">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-sm font-semibold text-white/70">Monthly Report <span className="font-normal text-white/40">— {selectedLabel}</span></h3>
                           </div>
-                        </div>
-                        <div className="px-4 py-2 border-b border-white/5 bg-white/[0.01]">
-                          <p className="text-xs text-white/40">{selectedLabel} — By Management Company</p>
+                          <div className="flex gap-1">
+                            {Array.from({ length: 12 }, (_, i) => {
+                              const ms = `${yearStr}-${String(i + 1).padStart(2, '0')}`;
+                              const label = new Date(parseInt(yearStr), i).toLocaleString('en-US', { month: 'short' });
+                              const hasData = reportMonths.some(rm => rm.ms === ms);
+                              return (
+                                <button
+                                  key={ms}
+                                  onClick={() => hasData ? setMonthlyReportMonth(ms) : null}
+                                  className={`flex-1 py-1 rounded-lg text-[10px] font-medium transition ${
+                                    selectedMonth === ms ? 'bg-amber-500 text-white' :
+                                    hasData ? 'bg-white/10 text-white/50 hover:bg-white/20 cursor-pointer' :
+                                    'bg-white/[0.03] text-white/15 cursor-default'
+                                  }`}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                            <button
+                              onClick={() => setMonthlyReportMonth('ytd')}
+                              className={`px-3 py-1 rounded-lg text-[10px] font-bold transition ${
+                                selectedMonth === 'ytd' ? 'bg-amber-500 text-white' : 'bg-white/10 text-white/50 hover:bg-white/20'
+                              }`}
+                            >
+                              YTD
+                            </button>
+                          </div>
                         </div>
 
                         {/* Column headers — matches mom's spreadsheet */}
@@ -1315,7 +1336,7 @@ export default function DulinProperties() {
 
                         {/* Grand total */}
                         <div className="grid grid-cols-8 gap-1 px-4 py-3 bg-white/[0.04] border-t border-white/10">
-                          <span className="col-span-2 text-xs font-bold text-white">Month Total</span>
+                          <span className="col-span-2 text-xs font-bold text-white">{isYtd ? 'YTD Total' : 'Month Total'}</span>
                           <span className="text-xs text-right font-bold text-emerald-400">{formatCurrency(grandTotal.rent)}</span>
                           <span className="text-xs text-right font-bold text-yellow-400/70">{formatCurrency(grandTotal.mgmtFee)}</span>
                           <span className="text-xs text-right font-bold text-red-400">{formatCurrency(grandTotal.repairs)}</span>
