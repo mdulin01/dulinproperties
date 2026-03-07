@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Upload, ChevronDown, Check, X, AlertCircle, FileText } from 'lucide-react';
+import { Upload, ChevronDown, Check, X, AlertCircle, FileText, Trash2 } from 'lucide-react';
 import { expenseCategories, incomeCategories } from '../../constants';
 import { formatCurrency } from '../../utils';
 
@@ -346,6 +346,11 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
     setEntries(prev => prev.map((e, i) => i === idx ? { ...e, [field]: value } : e));
   }, []);
 
+  // Remove entry from review list
+  const removeEntry = useCallback((idx) => {
+    setEntries(prev => prev.filter((_, i) => i !== idx));
+  }, []);
+
   // Select/deselect all
   const selectAll = useCallback((val) => {
     setEntries(prev => prev.map(e => ({ ...e, selected: val })));
@@ -561,6 +566,7 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
                     <th className="text-left px-3 py-2 text-[10px] font-semibold text-white/40 uppercase">Category</th>
                     <th className="text-left px-3 py-2 text-[10px] font-semibold text-white/40 uppercase">Property</th>
                     <th className="text-right px-3 py-2 text-[10px] font-semibold text-white/40 uppercase">Amount</th>
+                    <th className="w-10 px-3 py-2"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -671,6 +677,17 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
                           <span className={`text-xs font-medium ${entry.flowType === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>
                             {formatCurrency(entry.amount)}
                           </span>
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          {!entry.imported && (
+                            <button
+                              onClick={() => removeEntry(idx)}
+                              className="w-6 h-6 rounded-full flex items-center justify-center text-white/20 hover:text-red-400 hover:bg-red-500/10 transition"
+                              title="Remove from review"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
