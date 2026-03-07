@@ -1224,26 +1224,25 @@ export default function DulinProperties() {
                         const pExp = monthExp.filter(e => String(e.propertyId) === pid);
                         const mgmtFee = pExp.filter(e => e.category === 'management-fee').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                         const repairs = pExp.filter(e => ['repair', 'plumbing', 'electrical', 'hvac', 'appliance'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                        const supplies = pExp.filter(e => ['cleaning', 'pest-control', 'landscaping'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                         const utilities = pExp.filter(e => ['utilities', 'internet'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                         const dist = pExp.filter(e => e.category === 'owner-distribution').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                        const other = pExp.filter(e => !['management-fee', 'owner-distribution', 'repair', 'plumbing', 'electrical', 'hvac', 'appliance', 'utilities', 'internet'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                        const hasActivity = rent > 0 || mgmtFee > 0 || repairs > 0 || utilities > 0 || dist > 0 || other > 0;
-                        return { name: `${p.emoji || '🏠'} ${p.name}`, rent, mgmtFee, repairs, utilities, dist, other, hasActivity };
-                      }).filter(r => r.hasActivity);
+                        return { name: `${p.emoji || '🏠'} ${p.name}`, rent, mgmtFee, repairs, supplies, utilities, dist };
+                      });
 
                       const totals = propRows.reduce((t, r) => ({
                         rent: t.rent + r.rent, mgmtFee: t.mgmtFee + r.mgmtFee, repairs: t.repairs + r.repairs,
-                        utilities: t.utilities + r.utilities, dist: t.dist + r.dist, other: t.other + r.other,
-                      }), { rent: 0, mgmtFee: 0, repairs: 0, utilities: 0, dist: 0, other: 0 });
+                        supplies: t.supplies + r.supplies, utilities: t.utilities + r.utilities, dist: t.dist + r.dist,
+                      }), { rent: 0, mgmtFee: 0, repairs: 0, supplies: 0, utilities: 0, dist: 0 });
 
-                      return { manager: mgr, props: propRows, totals, hasData: propRows.length > 0 };
-                    }).filter(g => g.hasData);
+                      return { manager: mgr, props: propRows, totals };
+                    });
 
                     const grandTotal = reportData.reduce((t, g) => ({
                       rent: t.rent + g.totals.rent, mgmtFee: t.mgmtFee + g.totals.mgmtFee,
-                      repairs: t.repairs + g.totals.repairs, utilities: t.utilities + g.totals.utilities,
-                      dist: t.dist + g.totals.dist, other: t.other + g.totals.other,
-                    }), { rent: 0, mgmtFee: 0, repairs: 0, utilities: 0, dist: 0, other: 0 });
+                      repairs: t.repairs + g.totals.repairs, supplies: t.supplies + g.totals.supplies,
+                      utilities: t.utilities + g.totals.utilities, dist: t.dist + g.totals.dist,
+                    }), { rent: 0, mgmtFee: 0, repairs: 0, supplies: 0, utilities: 0, dist: 0 });
 
                     return (
                       <div className="bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden mb-6">
@@ -1267,15 +1266,15 @@ export default function DulinProperties() {
                           <p className="text-xs text-white/40">{selectedLabel} — By Management Company</p>
                         </div>
 
-                        {/* Column headers */}
+                        {/* Column headers — matches mom's spreadsheet */}
                         <div className="grid grid-cols-8 gap-1 px-4 py-2 text-[9px] font-semibold text-white/30 uppercase tracking-wider border-b border-white/5">
                           <span className="col-span-2">Property</span>
-                          <span className="text-right">Rent</span>
-                          <span className="text-right">Mgmt Fee</span>
+                          <span className="text-right">Rent Paid</span>
+                          <span className="text-right">Manage. Fee</span>
                           <span className="text-right">Repairs</span>
+                          <span className="text-right">Supplies</span>
                           <span className="text-right">Utilities</span>
-                          <span className="text-right">Other</span>
-                          <span className="text-right">Owner Dist</span>
+                          <span className="text-right">Owner Dist.</span>
                         </div>
 
                         {reportData.map(group => {
@@ -1288,15 +1287,15 @@ export default function DulinProperties() {
                                   {mgrEmoji[group.manager] || '📋'} {group.manager}
                                 </span>
                               </div>
-                              {/* Property rows */}
+                              {/* Property rows — all properties shown */}
                               {group.props.map((row, ri) => (
                                 <div key={ri} className="grid grid-cols-8 gap-1 px-4 py-1.5 border-b border-white/[0.03] hover:bg-white/[0.02]">
                                   <span className="col-span-2 text-xs text-white/70 truncate">{row.name}</span>
                                   <span className="text-xs text-right text-emerald-400/80">{row.rent > 0 ? formatCurrency(row.rent) : '—'}</span>
                                   <span className="text-xs text-right text-yellow-400/60">{row.mgmtFee > 0 ? formatCurrency(row.mgmtFee) : '—'}</span>
                                   <span className="text-xs text-right text-red-400/60">{row.repairs > 0 ? formatCurrency(row.repairs) : '—'}</span>
+                                  <span className="text-xs text-right text-amber-400/60">{row.supplies > 0 ? formatCurrency(row.supplies) : '—'}</span>
                                   <span className="text-xs text-right text-orange-400/60">{row.utilities > 0 ? formatCurrency(row.utilities) : '—'}</span>
-                                  <span className="text-xs text-right text-white/40">{row.other > 0 ? formatCurrency(row.other) : '—'}</span>
                                   <span className="text-xs text-right text-blue-400/60">{row.dist > 0 ? formatCurrency(row.dist) : '—'}</span>
                                 </div>
                               ))}
@@ -1306,8 +1305,8 @@ export default function DulinProperties() {
                                 <span className="text-[10px] text-right font-semibold text-emerald-400/60">{group.totals.rent > 0 ? formatCurrency(group.totals.rent) : '—'}</span>
                                 <span className="text-[10px] text-right font-semibold text-yellow-400/40">{group.totals.mgmtFee > 0 ? formatCurrency(group.totals.mgmtFee) : '—'}</span>
                                 <span className="text-[10px] text-right font-semibold text-red-400/40">{group.totals.repairs > 0 ? formatCurrency(group.totals.repairs) : '—'}</span>
+                                <span className="text-[10px] text-right font-semibold text-amber-400/40">{group.totals.supplies > 0 ? formatCurrency(group.totals.supplies) : '—'}</span>
                                 <span className="text-[10px] text-right font-semibold text-orange-400/40">{group.totals.utilities > 0 ? formatCurrency(group.totals.utilities) : '—'}</span>
-                                <span className="text-[10px] text-right font-semibold text-white/30">{group.totals.other > 0 ? formatCurrency(group.totals.other) : '—'}</span>
                                 <span className="text-[10px] text-right font-semibold text-blue-400/40">{group.totals.dist > 0 ? formatCurrency(group.totals.dist) : '—'}</span>
                               </div>
                             </div>
@@ -1320,8 +1319,8 @@ export default function DulinProperties() {
                           <span className="text-xs text-right font-bold text-emerald-400">{formatCurrency(grandTotal.rent)}</span>
                           <span className="text-xs text-right font-bold text-yellow-400/70">{formatCurrency(grandTotal.mgmtFee)}</span>
                           <span className="text-xs text-right font-bold text-red-400">{formatCurrency(grandTotal.repairs)}</span>
+                          <span className="text-xs text-right font-bold text-amber-400">{formatCurrency(grandTotal.supplies)}</span>
                           <span className="text-xs text-right font-bold text-orange-400">{formatCurrency(grandTotal.utilities)}</span>
-                          <span className="text-xs text-right font-bold text-white/50">{formatCurrency(grandTotal.other)}</span>
                           <span className="text-xs text-right font-bold text-blue-400">{formatCurrency(grandTotal.dist)}</span>
                         </div>
                       </div>
