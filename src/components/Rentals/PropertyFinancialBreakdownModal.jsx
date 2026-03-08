@@ -1,12 +1,31 @@
 import React, { useState, useMemo } from 'react';
 import { X, ChevronDown, ChevronUp, TrendingUp, TrendingDown, ArrowRight } from 'lucide-react';
-import { formatCurrency } from '../../utils';
+import { OPERATING_CATEGORY_VALUES } from '../../constants';
+
+const formatCurrency = (amount) => {
+  const num = parseFloat(amount) || 0;
+  return num.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 });
+};
 
 const PropertyFinancialBreakdownModal = ({ properties, rentPayments, expenses, onPropertyClick, onClose }) => {
   const [sortField, setSortField] = useState('profit');
   const [sortDir, setSortDir] = useState('desc');
 
   const currentYear = new Date().getFullYear();
+
+  // Separate operating expenses from property expenses
+  const nonOperatingExpenses = useMemo(() =>
+    (expenses || []).filter(e => !OPERATING_CATEGORY_VALUES.has(e.category)),
+    [expenses]
+  );
+
+  const ytdOperatingExpenses = useMemo(() =>
+    (expenses || [])
+      .filter(e => OPERATING_CATEGORY_VALUES.has(e.category) && e.isTemplate !== true)
+      .filter(e => e.date && e.date.startsWith(String(currentYear)))
+      .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0),
+    [expenses, currentYear]
+  );
 
   const propertyFinancials = useMemo(() => {
     return properties.map(property => {
@@ -21,8 +40,8 @@ const PropertyFinancialBreakdownModal = ({ properties, rentPayments, expenses, o
         })
         .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
 
-      // YTD expenses for this property (exclude templates)
-      const ytdExpenses = (expenses || [])
+      // YTD expenses for this property (exclude templates and operating expenses)
+      const ytdExpenses = nonOperatingExpenses
         .filter(e => String(e.propertyId) === propId && e.isTemplate !== true)
         .filter(e => e.date && e.date.startsWith(String(currentYear)))
         .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
@@ -32,7 +51,7 @@ const PropertyFinancialBreakdownModal = ({ properties, rentPayments, expenses, o
 
       return { property, ytdRent, ytdExpenses, profit, monthlyRent };
     });
-  }, [properties, rentPayments, expenses, currentYear]);
+  }, [properties, rentPayments, nonOperatingExpenses, currentYear]);
 
   const sorted = useMemo(() => {
     const arr = [...propertyFinancials];
@@ -84,19 +103,23 @@ const PropertyFinancialBreakdownModal = ({ properties, rentPayments, expenses, o
         </div>
 
         {/* Totals bar */}
-        <div className="grid grid-cols-3 gap-3 p-4 bg-white/[0.03] border-b border-white/10">
+        <div className="grid grid-cols-4 gap-3 p-4 bg-white/[0.03] border-b border-white/10">
           <div className="text-center">
             <p className="text-white/40 text-xs">Total Rent</p>
             <p className="text-emerald-400 font-bold">{formatCurrency(totals.ytdRent)}</p>
           </div>
           <div className="text-center">
-            <p className="text-white/40 text-xs">Total Expenses</p>
+            <p className="text-white/40 text-xs">Property Expenses</p>
             <p className="text-red-400 font-bold">{formatCurrency(totals.ytdExpenses)}</p>
           </div>
           <div className="text-center">
+            <p className="text-white/40 text-xs">Operating Expenses</p>
+            <p className="text-amber-400 font-bold">{formatCurrency(ytdOperatingExpenses)}</p>
+          </div>
+          <div className="text-center">
             <p className="text-white/40 text-xs">Net Profit/Loss</p>
-            <p className={`font-bold ${totals.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              {formatCurrency(totals.profit)}
+            <p className={`font-bold ${(totals.profit - ytdOperatingExpenses) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              {formatCurrency(totals.profit - ytdOperatingExpenses)}
             </p>
           </div>
         </div>
@@ -138,6 +161,21 @@ const PropertyFinancialBreakdownModal = ({ properties, rentPayments, expenses, o
               </div>
             </div>
           ))}
+
+          {/* Operating Expenses row */}
+          {ytdOperatingExpenses > 0 && (
+            <div className="grid grid-cols-4 gap-2 px-5 py-3 border-b border-white/5 bg-amber-500/[0.03]">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="truncate text-sm text-amber-300 font-medium">Operating / Business</span>
+              </div>
+              <div className="text-right text-sm text-white/30">—</div>
+              <div className="text-right text-sm text-amber-400">{formatCurrency(ytdOperatingExpenses)}</div>
+              <div className="text-right text-sm font-semibold text-amber-400 flex items-center justify-end gap-1">
+                <TrendingDown className="w-3 h-3" />
+                {formatCurrency(ytdOperatingExpenses)}
+              </div>
+            </div>
+          )}
 
           {properties.length === 0 && (
             <p className="text-center text-white/30 py-12">No properties to show</p>

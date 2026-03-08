@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { Search, Plus, ChevronDown, ChevronUp, RefreshCw, Pencil, Trash2, Calendar, Upload, CheckSquare, Square, X } from 'lucide-react';
-import { expenseCategories, recurringFrequencies } from '../../constants';
+import { expenseCategories, OPERATING_CATEGORY_VALUES, recurringFrequencies } from '../../constants';
 import { formatDate, formatCurrency } from '../../utils';
 
 // Ordinal suffix helper
@@ -38,7 +38,11 @@ export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDe
   const filtered = useMemo(() => {
     let result = [...regularExpenses];
     if (categoryFilter !== 'all') result = result.filter(e => e.category === categoryFilter);
-    if (propertyFilter !== 'all') result = result.filter(e => e.propertyId === propertyFilter);
+    if (propertyFilter === '__operating__') {
+      result = result.filter(e => OPERATING_CATEGORY_VALUES.has(e.category));
+    } else if (propertyFilter !== 'all') {
+      result = result.filter(e => e.propertyId === propertyFilter);
+    }
     if (yearFilter !== 'all') result = result.filter(e => (e.date || '').startsWith(yearFilter));
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -121,8 +125,13 @@ export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDe
   const getCategoryBadge = (category) => {
     const c = expenseCategories.find(ec => ec.value === category);
     if (!c) return <span className="text-xs text-white/40">{category}</span>;
+    const isOp = OPERATING_CATEGORY_VALUES.has(category);
     return (
-      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-300">
+      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+        isOp
+          ? 'bg-amber-500/10 border border-amber-500/20 text-amber-300'
+          : 'bg-red-500/10 border border-red-500/20 text-red-300'
+      }`}>
         {c.emoji} {c.label}
       </span>
     );
@@ -380,6 +389,7 @@ export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDe
           className="px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white focus:outline-none focus:border-red-500/50"
         >
           <option value="all">All Properties</option>
+          <option value="__operating__">Operating / Business</option>
           {properties.map(p => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}

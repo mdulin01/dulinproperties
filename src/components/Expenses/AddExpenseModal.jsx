@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Trash2, ImagePlus, RefreshCw } from 'lucide-react';
-import { expenseCategories, recurringFrequencies, MILEAGE_RATE } from '../../constants';
+import { propertyExpenseCategories, operatingExpenseCategories, expenseCategories, OPERATING_CATEGORY_VALUES, recurringFrequencies, MILEAGE_RATE } from '../../constants';
 
 export default function AddExpenseModal({ expense, properties, onSave, onDelete, onClose, onUploadPhoto }) {
   const isEditing = expense && expense.id;
@@ -28,6 +28,7 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
 
   const [uploading, setUploading] = useState(false);
   const isMileage = form.category === 'mileage';
+  const isOperating = OPERATING_CATEGORY_VALUES.has(form.category);
 
   useEffect(() => {
     if (isEditing) {
@@ -180,14 +181,30 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
           {/* Category */}
           <div>
             <label className="text-xs text-white/40 mb-1 block">Category</label>
+            {/* Property expense categories */}
             <div className="flex flex-wrap gap-1.5">
-              {expenseCategories.map(c => (
+              {propertyExpenseCategories.map(c => (
                 <button
                   key={c.value}
                   onClick={() => setForm(f => ({ ...f, category: c.value }))}
                   className={`px-3 py-1.5 rounded-xl text-xs font-medium transition border ${
                     form.category === c.value
                       ? 'bg-red-500/20 border-red-500/30 text-red-300'
+                      : 'bg-white/[0.05] border-white/[0.08] text-white/40 hover:bg-white/10'
+                  }`}
+                >{c.emoji} {c.label}</button>
+              ))}
+            </div>
+            {/* Operating / Business expense categories */}
+            <label className="text-xs text-amber-400/60 mt-3 mb-1 block">Operating / Business</label>
+            <div className="flex flex-wrap gap-1.5">
+              {operatingExpenseCategories.map(c => (
+                <button
+                  key={c.value}
+                  onClick={() => setForm(f => ({ ...f, category: c.value, propertyId: '', propertyName: '' }))}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-medium transition border ${
+                    form.category === c.value
+                      ? 'bg-amber-500/20 border-amber-500/30 text-amber-300'
                       : 'bg-white/[0.05] border-white/[0.08] text-white/40 hover:bg-white/10'
                   }`}
                 >{c.emoji} {c.label}</button>
@@ -299,20 +316,27 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
                 </div>
               </div>
 
-              {/* Property */}
-              <div>
-                <label className="text-xs text-white/40 mb-1 block">Property</label>
-                <select
-                  value={form.propertyId}
-                  onChange={e => handlePropertyChange(e.target.value)}
-                  className="w-full px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500/50"
-                >
-                  <option value="">General (no property)</option>
-                  {properties.map(p => (
-                    <option key={p.id} value={p.id}>{p.emoji || '🏠'} {p.name}</option>
-                  ))}
-                </select>
-              </div>
+              {/* Property (hidden for operating categories) */}
+              {!isOperating && (
+                <div>
+                  <label className="text-xs text-white/40 mb-1 block">Property</label>
+                  <select
+                    value={form.propertyId}
+                    onChange={e => handlePropertyChange(e.target.value)}
+                    className="w-full px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500/50"
+                  >
+                    <option value="">General (no property)</option>
+                    {properties.map(p => (
+                      <option key={p.id} value={p.id}>{p.emoji || '🏠'} {p.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {isOperating && (
+                <div className="px-3 py-2 bg-amber-500/5 border border-amber-500/20 rounded-xl text-xs text-amber-300/70">
+                  Business-wide operating expense — not tied to a specific property
+                </div>
+              )}
 
               {/* Date */}
               <div>
@@ -352,20 +376,26 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
                 />
               </div>
 
-              {/* Property */}
-              <div>
-                <label className="text-xs text-white/40 mb-1 block">Property</label>
-                <select
-                  value={form.propertyId}
-                  onChange={e => handlePropertyChange(e.target.value)}
-                  className="w-full px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500/50"
-                >
-                  <option value="">General (no property)</option>
-                  {properties.map(p => (
-                    <option key={p.id} value={p.id}>{p.emoji || '🏠'} {p.name}</option>
-                  ))}
-                </select>
-              </div>
+              {/* Property (hidden for operating categories) */}
+              {!isOperating ? (
+                <div>
+                  <label className="text-xs text-white/40 mb-1 block">Property</label>
+                  <select
+                    value={form.propertyId}
+                    onChange={e => handlePropertyChange(e.target.value)}
+                    className="w-full px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500/50"
+                  >
+                    <option value="">General (no property)</option>
+                    {properties.map(p => (
+                      <option key={p.id} value={p.id}>{p.emoji || '🏠'} {p.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="px-3 py-2 bg-amber-500/5 border border-amber-500/20 rounded-xl text-xs text-amber-300/70">
+                  Business-wide operating expense — not tied to a specific property
+                </div>
+              )}
 
               {/* Amount & Date */}
               <div className="grid grid-cols-2 gap-3">

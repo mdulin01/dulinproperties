@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, ChevronDown } from 'lucide-react';
-import { expenseCategories, incomeCategories } from '../../constants';
+import { expenseCategories, incomeCategories, OPERATING_CATEGORY_VALUES } from '../../constants';
 
 const AddTransactionModal = ({
   transaction,

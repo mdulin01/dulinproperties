@@ -84,8 +84,8 @@ export const documentTypes = [
   { value: 'other', label: 'Other', emoji: '📁' },
 ];
 
-// Expense categories
-export const expenseCategories = [
+// Expense categories — Property-specific
+export const propertyExpenseCategories = [
   { value: 'owner-distribution', label: 'Owner Distribution', emoji: '💸' },
   { value: 'management-fee', label: 'Management Fee', emoji: '🏢' },
   { value: 'repair', label: 'Repair', emoji: '🔧' },
@@ -107,8 +107,31 @@ export const expenseCategories = [
   { value: 'appliance', label: 'Appliance', emoji: '🍳' },
   { value: 'mileage', label: 'Mileage', emoji: '🚗' },
   { value: 'other', label: 'Other', emoji: '📋' },
-
 ];
+
+// Expense categories — Operating / Business-wide (not tied to a specific property)
+export const operatingExpenseCategories = [
+  { value: 'op-software', label: 'Software', emoji: '💻' },
+  { value: 'op-internet', label: 'Internet', emoji: '📡' },
+  { value: 'op-home-office', label: 'Home Office', emoji: '🏠' },
+  { value: 'op-accounting', label: 'Accounting', emoji: '🧮' },
+  { value: 'op-subscriptions', label: 'Subscriptions', emoji: '🔄' },
+  { value: 'op-office-supplies', label: 'Office Supplies', emoji: '🗂️' },
+  { value: 'op-education', label: 'Education / Training', emoji: '📚' },
+  { value: 'op-travel', label: 'Travel', emoji: '✈️' },
+  { value: 'op-phone', label: 'Phone', emoji: '📱' },
+  { value: 'op-marketing', label: 'Marketing', emoji: '📢' },
+  { value: 'op-bank-fees', label: 'Bank Fees', emoji: '🏦' },
+  { value: 'op-other', label: 'Other Operating', emoji: '📋' },
+];
+
+// Set of operating category values for quick lookup
+export const OPERATING_CATEGORY_VALUES = new Set(
+  operatingExpenseCategories.map(c => c.value)
+);
+
+// Combined list (for backwards compatibility with filters, etc.)
+export const expenseCategories = [...propertyExpenseCategories, ...operatingExpenseCategories];
 
 // Recurring expense frequencies
 export const recurringFrequencies = [
