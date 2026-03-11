@@ -1324,49 +1324,49 @@ export default function DulinProperties() {
                                 </div>
                               ))}
                               {/* Manager subtotal (statement/managed expenses only) */}
-                              <div className={`grid grid-cols-8 gap-1 px-4 py-1.5 border-b border-white/5 ${(reconciliations[selectedMonth]?.[group.manager]?.confirmed || reconciliations[selectedMonth]?.[group.manager]?.autoMatch) ? 'bg-green-500/[0.06]' : 'bg-white/[0.02]'}`}>
-                                <span className="col-span-2 text-[10px] font-semibold text-white/40 uppercase">Subtotal</span>
-                                <span className="text-[10px] text-right font-semibold text-emerald-400/60">{group.managedTotals.rent > 0 ? formatCurrency(group.managedTotals.rent) : '—'}</span>
-                                <span className="text-[10px] text-right font-semibold text-yellow-400/40">{group.managedTotals.mgmtFee > 0 ? formatCurrency(group.managedTotals.mgmtFee) : '—'}</span>
-                                <span className="text-[10px] text-right font-semibold text-red-400/40">{group.managedTotals.repairs > 0 ? formatCurrency(group.managedTotals.repairs) : '—'}</span>
-                                <span className="text-[10px] text-right font-semibold text-amber-400/40">{group.managedTotals.supplies > 0 ? formatCurrency(group.managedTotals.supplies) : '—'}</span>
-                                <span className="text-[10px] text-right font-semibold text-orange-400/40">{group.managedTotals.utilities > 0 ? formatCurrency(group.managedTotals.utilities) : '—'}</span>
-                                <span className="text-[10px] text-right font-semibold text-blue-400/40">{group.managedTotals.dist > 0 ? formatCurrency(group.managedTotals.dist) : '—'}</span>
+                              <div className={`grid grid-cols-8 gap-1 px-4 py-2 border-b border-white/5 ${(reconciliations[selectedMonth]?.[group.manager]?.confirmed || reconciliations[selectedMonth]?.[group.manager]?.autoMatch) ? 'bg-green-500/[0.06]' : 'bg-white/[0.02]'}`}>
+                                <span className="col-span-2 text-xs font-semibold text-white/50 uppercase underline decoration-white/20 underline-offset-2">Subtotal</span>
+                                <span className="text-xs text-right font-semibold text-emerald-400/70">{group.managedTotals.rent > 0 ? <span className="inline-block border border-emerald-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.rent)}</span> : '—'}</span>
+                                <span className="text-xs text-right font-semibold text-yellow-400/50">{group.managedTotals.mgmtFee > 0 ? <span className="inline-block border border-yellow-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.mgmtFee)}</span> : '—'}</span>
+                                <span className="text-xs text-right font-semibold text-red-400/50">{group.managedTotals.repairs > 0 ? <span className="inline-block border border-red-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.repairs)}</span> : '—'}</span>
+                                <span className="text-xs text-right font-semibold text-amber-400/50">{group.managedTotals.supplies > 0 ? <span className="inline-block border border-amber-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.supplies)}</span> : '—'}</span>
+                                <span className="text-xs text-right font-semibold text-orange-400/50">{group.managedTotals.utilities > 0 ? <span className="inline-block border border-orange-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.utilities)}</span> : '—'}</span>
+                                <span className="text-xs text-right font-semibold text-blue-400/50">{group.managedTotals.dist > 0 ? <span className="inline-block border border-blue-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.dist)}</span> : '—'}</span>
                               </div>
-                              {/* Owner-paid expenses row — always shown, expandable */}
-                              {(() => {
+                              {/* Owner-paid expenses row — shown for managed groups, expandable */}
+                              {group.manager !== 'Dianne Dulin' && (() => {
                                 const isOwnerExpanded = expandedOwnerPaid[group.manager];
                                 const ownerPropRows = group.props.filter(r => r.ownerRepairs > 0 || r.ownerSupplies > 0 || r.ownerUtilities > 0 || r.ownerMgmtFee > 0 || r.ownerDist > 0);
                                 return (
                                   <>
                                     <div
-                                      className={`grid grid-cols-8 gap-1 px-4 py-1.5 border-b border-white/5 bg-amber-500/[0.03] ${group.hasOwnerExpenses ? 'cursor-pointer hover:bg-amber-500/[0.06] transition' : ''}`}
+                                      className={`grid grid-cols-8 gap-1 px-4 py-1.5 border-b border-white/5 ${group.hasOwnerExpenses ? 'cursor-pointer hover:bg-white/[0.02] transition' : ''}`}
                                       onClick={() => { if (group.hasOwnerExpenses) setExpandedOwnerPaid(prev => ({ ...prev, [group.manager]: !prev[group.manager] })); }}
                                     >
-                                      <span className="col-span-2 text-[10px] font-semibold text-amber-400/60 uppercase flex items-center gap-1">
+                                      <span className="col-span-2 text-xs font-semibold text-amber-400/60 uppercase flex items-center gap-1">
                                         {group.hasOwnerExpenses && (
                                           <ChevronDown className={`w-3 h-3 text-amber-400/40 transition-transform flex-shrink-0 ${isOwnerExpanded ? '' : '-rotate-90'}`} />
                                         )}
                                         + Owner Paid
                                       </span>
-                                      <span className="text-[10px] text-right text-white/20">—</span>
-                                      <span className="text-[10px] text-right font-semibold text-yellow-400/30">{group.ownerTotals.mgmtFee > 0 ? formatCurrency(group.ownerTotals.mgmtFee) : '—'}</span>
-                                      <span className="text-[10px] text-right font-semibold text-red-400/30">{group.ownerTotals.repairs > 0 ? formatCurrency(group.ownerTotals.repairs) : '—'}</span>
-                                      <span className="text-[10px] text-right font-semibold text-amber-400/30">{group.ownerTotals.supplies > 0 ? formatCurrency(group.ownerTotals.supplies) : '—'}</span>
-                                      <span className="text-[10px] text-right font-semibold text-orange-400/30">{group.ownerTotals.utilities > 0 ? formatCurrency(group.ownerTotals.utilities) : '—'}</span>
-                                      <span className="text-[10px] text-right font-semibold text-blue-400/30">{group.ownerTotals.dist > 0 ? formatCurrency(group.ownerTotals.dist) : '—'}</span>
+                                      <span className="text-xs text-right text-white/20">—</span>
+                                      <span className="text-xs text-right text-yellow-400/40">{group.ownerTotals.mgmtFee > 0 ? formatCurrency(group.ownerTotals.mgmtFee) : '—'}</span>
+                                      <span className="text-xs text-right text-red-400/40">{group.ownerTotals.repairs > 0 ? formatCurrency(group.ownerTotals.repairs) : '—'}</span>
+                                      <span className="text-xs text-right text-amber-400/40">{group.ownerTotals.supplies > 0 ? formatCurrency(group.ownerTotals.supplies) : '—'}</span>
+                                      <span className="text-xs text-right text-orange-400/40">{group.ownerTotals.utilities > 0 ? formatCurrency(group.ownerTotals.utilities) : '—'}</span>
+                                      <span className="text-xs text-right text-blue-400/40">{group.ownerTotals.dist > 0 ? formatCurrency(group.ownerTotals.dist) : '—'}</span>
                                     </div>
                                     {isOwnerExpanded && ownerPropRows.length > 0 && (
-                                      <div className="bg-amber-500/[0.02]">
+                                      <div>
                                         {ownerPropRows.map((row, ri) => (
                                           <div key={ri} className="grid grid-cols-8 gap-1 px-4 py-1 pl-8 border-b border-white/[0.02]">
-                                            <span className="col-span-2 text-[9px] text-amber-400/50 truncate">{row.name}</span>
-                                            <span className="text-[9px] text-right text-white/15">—</span>
-                                            <span className="text-[9px] text-right text-yellow-400/25">{row.ownerMgmtFee > 0 ? formatCurrency(row.ownerMgmtFee) : '—'}</span>
-                                            <span className="text-[9px] text-right text-red-400/25">{row.ownerRepairs > 0 ? formatCurrency(row.ownerRepairs) : '—'}</span>
-                                            <span className="text-[9px] text-right text-amber-400/25">{row.ownerSupplies > 0 ? formatCurrency(row.ownerSupplies) : '—'}</span>
-                                            <span className="text-[9px] text-right text-orange-400/25">{row.ownerUtilities > 0 ? formatCurrency(row.ownerUtilities) : '—'}</span>
-                                            <span className="text-[9px] text-right text-blue-400/25">{row.ownerDist > 0 ? formatCurrency(row.ownerDist) : '—'}</span>
+                                            <span className="col-span-2 text-xs text-amber-400/50 truncate">{row.name}</span>
+                                            <span className="text-xs text-right text-white/15">—</span>
+                                            <span className="text-xs text-right text-yellow-400/30">{row.ownerMgmtFee > 0 ? formatCurrency(row.ownerMgmtFee) : '—'}</span>
+                                            <span className="text-xs text-right text-red-400/30">{row.ownerRepairs > 0 ? formatCurrency(row.ownerRepairs) : '—'}</span>
+                                            <span className="text-xs text-right text-amber-400/30">{row.ownerSupplies > 0 ? formatCurrency(row.ownerSupplies) : '—'}</span>
+                                            <span className="text-xs text-right text-orange-400/30">{row.ownerUtilities > 0 ? formatCurrency(row.ownerUtilities) : '—'}</span>
+                                            <span className="text-xs text-right text-blue-400/30">{row.ownerDist > 0 ? formatCurrency(row.ownerDist) : '—'}</span>
                                           </div>
                                         ))}
                                       </div>
