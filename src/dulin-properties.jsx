@@ -944,6 +944,7 @@ export default function DulinProperties() {
                   { id: 'rent', label: 'Income', emoji: '💰' },
                   { id: 'expenses', label: 'Expenses', emoji: '💸' },
                   { id: 'documents', label: 'Documents', emoji: '📄' },
+                  { id: 'actions', label: 'Actions', emoji: '⚡' },
                 ].map(tab => (
                   <button
                     key={tab.id}
