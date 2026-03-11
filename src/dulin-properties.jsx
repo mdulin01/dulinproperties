@@ -120,6 +120,8 @@ export default function DulinProperties() {
   const [expandedMonths, setExpandedMonths] = useState({});
   const [monthlySummaryCollapsed, setMonthlySummaryCollapsed] = useState(false);
   const [monthlyReportMonth, setMonthlyReportMonth] = useState(null); // YYYY-MM string for the report view
+  const [reconciliations, setReconciliations] = useState({}); // { "YYYY-MM": { "Absolute": true, ... } }
+  const [showReconcileMode, setShowReconcileMode] = useState(false);
 
   // Search
   const [showSearch, setShowSearch] = useState(false);
@@ -348,6 +350,24 @@ export default function DulinProperties() {
 
   useEffect(() => { saveRentRef.current = saveRentToFirestore; }, [saveRentToFirestore]);
 
+  const saveReconciliation = useCallback(async (month, manager, checked) => {
+    if (!user) return;
+    try {
+      const updated = { ...reconciliations };
+      if (!updated[month]) updated[month] = {};
+      updated[month][manager] = checked;
+      setReconciliations(updated);
+      await setDoc(doc(db, 'rentalData', 'reconciliations'), {
+        months: updated,
+        lastUpdated: new Date().toISOString(),
+        updatedBy: currentUser,
+      }, { merge: true });
+    } catch (error) {
+      logger.error('[reconciliation] save FAILED:', error);
+      showToast('Failed to save reconciliation.', 'error');
+    }
+  }, [user, currentUser, reconciliations, showToast]);
+
   // NOTE: Expense saving is now handled directly inside the useExpenses hook.
   // No more saveExpensesRef indirection — the hook calls setDoc internally.
 
@@ -466,6 +486,18 @@ export default function DulinProperties() {
       (error) => logger.error('[expenses] onSnapshot ERROR:', error)
     );
 
+    // Subscribe to reconciliations
+    const reconUnsubscribe = onSnapshot(
+      doc(db, 'rentalData', 'reconciliations'),
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.months) setReconciliations(data.months);
+        }
+      },
+      (error) => logger.error('Error loading reconciliations:', error)
+    );
+
     return () => {
       hubUnsubscribe();
       propertiesUnsubscribe();
@@ -473,6 +505,7 @@ export default function DulinProperties() {
       financialsUnsubscribe();
       rentUnsubscribe();
       expensesUnsubscribe();
+      reconUnsubscribe();
     };
   }, [user]);
 
@@ -1256,6 +1289,16 @@ export default function DulinProperties() {
                         <div className="px-4 py-3 border-b border-white/5">
                           <div className="flex items-center justify-between mb-2">
                             <h3 className="text-sm font-semibold text-white/70">Monthly Report <span className="font-normal text-white/40">— {selectedLabel}</span></h3>
+                            {!isYtd && (
+                              <button
+                                onClick={() => setShowReconcileMode(m => !m)}
+                                className={`px-3 py-1 rounded-lg text-xs font-medium transition ${
+                                  showReconcileMode ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/50 hover:bg-white/20'
+                                }`}
+                              >
+                                {showReconcileMode ? '✓ Reconciling' : 'Reconcile Data'}
+                              </button>
+                            )}
                           </div>
                           <div className="flex gap-1">
                             {Array.from({ length: 12 }, (_, i) => {
@@ -1303,9 +1346,12 @@ export default function DulinProperties() {
                           return (
                             <div key={group.manager}>
                               {/* Manager header */}
-                              <div className={`px-4 py-2 border-b border-white/5 ${gc.split(' ')[2] || 'bg-white/5'}`}>
+                              <div className={`px-4 py-2 border-b border-white/5 ${gc.split(' ')[2] || 'bg-white/5'} flex items-center justify-between`}>
                                 <span className={`text-xs font-bold ${gc.split(' ')[0]}`}>
                                   {mgrEmoji[group.manager] || '📋'} {group.manager}
+                                  {!isYtd && reconciliations[selectedMonth]?.[group.manager] && (
+                                    <span className="ml-2 text-green-400" title="Reconciled">✓</span>
+                                  )}
                                 </span>
                               </div>
                               {/* Property rows — all properties shown */}
@@ -1321,8 +1367,23 @@ export default function DulinProperties() {
                                 </div>
                               ))}
                               {/* Manager subtotal */}
-                              <div className="grid grid-cols-8 gap-1 px-4 py-1.5 bg-white/[0.02] border-b border-white/5">
-                                <span className="col-span-2 text-[10px] font-semibold text-white/40 uppercase">Subtotal</span>
+                              <div className={`grid grid-cols-8 gap-1 px-4 py-1.5 border-b border-white/5 ${reconciliations[selectedMonth]?.[group.manager] ? 'bg-green-500/[0.06]' : 'bg-white/[0.02]'}`}>
+                                <span className="col-span-2 text-[10px] font-semibold text-white/40 uppercase flex items-center gap-2">
+                                  Subtotal
+                                  {showReconcileMode && !isYtd && (
+                                    <label className="flex items-center gap-1 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={!!reconciliations[selectedMonth]?.[group.manager]}
+                                        onChange={(e) => saveReconciliation(selectedMonth, group.manager, e.target.checked)}
+                                        className="w-3.5 h-3.5 rounded accent-emerald-500"
+                                      />
+                                      <span className={`text-[9px] ${reconciliations[selectedMonth]?.[group.manager] ? 'text-green-400' : 'text-white/30'}`}>
+                                        {reconciliations[selectedMonth]?.[group.manager] ? 'Reconciled' : 'OK?'}
+                                      </span>
+                                    </label>
+                                  )}
+                                </span>
                                 <span className="text-[10px] text-right font-semibold text-emerald-400/60">{group.totals.rent > 0 ? formatCurrency(group.totals.rent) : '—'}</span>
                                 <span className="text-[10px] text-right font-semibold text-yellow-400/40">{group.totals.mgmtFee > 0 ? formatCurrency(group.totals.mgmtFee) : '—'}</span>
                                 <span className="text-[10px] text-right font-semibold text-red-400/40">{group.totals.repairs > 0 ? formatCurrency(group.totals.repairs) : '—'}</span>
