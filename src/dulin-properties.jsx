@@ -1396,26 +1396,32 @@ export default function DulinProperties() {
 
                   {/* Action Items — quick summary link */}
                   {(() => {
-                    // Quick count of action items for badge
+                    // Quick count of action items for badge (matches Actions section logic)
                     const today = new Date(); today.setHours(0, 0, 0, 0);
                     const currentYearStr = String(today.getFullYear());
                     const currentMonth = `${currentYearStr}-${String(today.getMonth() + 1).padStart(2, '0')}`;
                     const lastMonth = today.getMonth() === 0
                       ? `${today.getFullYear() - 1}-12`
                       : `${currentYearStr}-${String(today.getMonth()).padStart(2, '0')}`;
+                    const getManager = (color) => { if (!color) return 'Absolute'; if (color.includes('purple') || color.includes('violet') || color.includes('indigo')) return 'Barnett & Hill'; if (color.includes('rose') || color.includes('pink')) return 'Dianne Dulin'; return 'Absolute'; };
+                    const isDianneOnly = (p) => getManager(p.color || '') === 'Dianne Dulin';
                     let count = 0;
-                    count += vacantProperties.length;
-                    count += leaseExpiredProperties.length;
-                    count += expiringLeases.length;
-                    // Missing lease dates
+                    // Vacant — Dianne only
+                    vacantProperties.forEach(p => { if (isDianneOnly(p)) count++; });
+                    // Expired/expiring leases — Dianne only
+                    leaseExpiredProperties.forEach(p => { if (isDianneOnly(p)) count++; });
+                    expiringLeases.forEach(p => { if (isDianneOnly(p)) count++; });
+                    // Missing lease dates — Dianne only
                     properties.forEach(p => {
+                      if (!isDianneOnly(p)) return;
                       const status = getEffectiveStatus(p);
                       if (!['occupied', 'month-to-month'].includes(status)) return;
                       if (!getPropertyTenants(p).some(t => t.leaseStart || t.leaseEnd)) count++;
                     });
-                    // Past due rent
+                    // Past due rent — Dianne only
                     if (today.getDate() > 5) {
                       properties.forEach(p => {
+                        if (!isDianneOnly(p)) return;
                         const status = getEffectiveStatus(p);
                         if (!isOccupiedStatus(status) || status === 'owner-occupied') return;
                         const hasPaid = rentPayments.some(r => String(r.propertyId) === String(p.id) && r.status === 'paid' && (r.month || r.datePaid || '').startsWith(currentMonth));
@@ -1424,7 +1430,6 @@ export default function DulinProperties() {
                     }
                     // Missing reports
                     if (today.getDate() > 10) {
-                      const getManager = (color) => { if (!color) return 'Absolute'; if (color.includes('purple') || color.includes('violet') || color.includes('indigo')) return 'Barnett & Hill'; if (color.includes('rose') || color.includes('pink')) return 'Dianne Dulin'; return 'Absolute'; };
                       ['Absolute', 'Barnett & Hill'].forEach(mgr => {
                         const mgrProps = properties.filter(p => getManager(p.color || '') === mgr);
                         if (mgrProps.length === 0) return;
@@ -1439,10 +1444,9 @@ export default function DulinProperties() {
                       const hasAnyRent = rentPayments.some(r => String(r.propertyId) === String(p.id) && r.status === 'paid' && (r.month || r.datePaid || '').startsWith(currentYearStr));
                       if (!hasAnyRent && isOccupiedStatus(status) && status !== 'owner-occupied') count++;
                     });
-                    // Missing property tax & insurance
+                    // Missing property info — count properties, not individual fields
                     properties.forEach(p => {
-                      if (!(parseFloat(p.propertyTaxAnnual) > 0)) count++;
-                      if (!(parseFloat(p.insuranceAnnual) > 0)) count++;
+                      if (!(parseFloat(p.propertyTaxAnnual) > 0) || !(parseFloat(p.insuranceAnnual) > 0)) count++;
                     });
 
                     if (count === 0) return null;
@@ -1840,7 +1844,6 @@ export default function DulinProperties() {
 
               {/* ========== ACTION ITEMS SECTION ========== */}
               {activeSection === 'actions' && (() => {
-                const actionItems = [];
                 const today = new Date(); today.setHours(0, 0, 0, 0);
                 const currentYearStr = String(today.getFullYear());
                 const currentMonth = `${currentYearStr}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -1854,17 +1857,20 @@ export default function DulinProperties() {
                   if (color.includes('rose') || color.includes('pink')) return 'Dianne Dulin';
                   return 'Absolute';
                 };
+                const isManaged = (p) => { const mgr = getManager(p.color || ''); return mgr === 'Absolute' || mgr === 'Barnett & Hill'; };
 
-                // --- Vacant ---
+                // --- Vacant (only Dianne properties — managed vacancies are handled by the company) ---
                 const vacantItems = [];
                 vacantProperties.forEach(p => {
+                  if (isManaged(p)) return; // management company handles filling vacancies
                   vacantItems.push({ icon: '🔴', text: `${p.emoji || '🏠'} ${p.name} is vacant`,
                     actionLabel: 'View', action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
                 });
 
-                // --- Lease Renewal ---
+                // --- Lease Renewal (only Dianne — managed leases are handled by management co) ---
                 const leaseItems = [];
                 leaseExpiredProperties.forEach(p => {
+                  if (isManaged(p)) return;
                   const tenants = getPropertyTenants(p);
                   const earliestEnd = tenants.map(t => t.leaseEnd).filter(Boolean).sort()[0];
                   const label = earliestEnd ? ` (expired ${new Date(earliestEnd + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })})` : '';
@@ -1872,6 +1878,7 @@ export default function DulinProperties() {
                     actionLabel: 'Renew', action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
                 });
                 expiringLeases.forEach(p => {
+                  if (isManaged(p)) return;
                   const tenants = getPropertyTenants(p);
                   const soonestEnd = tenants.map(t => t.leaseEnd).filter(Boolean).sort()[0];
                   const end = new Date(soonestEnd + 'T00:00:00');
@@ -1879,8 +1886,9 @@ export default function DulinProperties() {
                   leaseItems.push({ icon: '⏳', text: `${p.emoji || '🏠'} ${p.name} — lease expires in ${days}d`,
                     actionLabel: 'View', action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
                 });
-                // Missing lease dates
+                // Missing lease dates — only Dianne properties
                 properties.forEach(p => {
+                  if (isManaged(p)) return;
                   const status = getEffectiveStatus(p);
                   if (!['occupied', 'month-to-month'].includes(status)) return;
                   const tenants = getPropertyTenants(p);
@@ -1891,10 +1899,11 @@ export default function DulinProperties() {
                   }
                 });
 
-                // --- Past Due Rent ---
+                // --- Past Due Rent (only Dianne — managed rent comes via reports) ---
                 const rentItems = [];
                 if (today.getDate() > 5) {
                   properties.forEach(p => {
+                    if (isManaged(p)) return;
                     const status = getEffectiveStatus(p);
                     if (!isOccupiedStatus(status) || status === 'owner-occupied') return;
                     const hasPaid = rentPayments.some(r =>
@@ -1942,16 +1951,14 @@ export default function DulinProperties() {
                   }
                 });
 
-                // --- Missing Property Info ---
-                const missingInfoItems = [];
+                // --- Missing Property Info — grouped by property ---
+                const missingByProperty = {};
                 properties.forEach(p => {
-                  if (!(parseFloat(p.propertyTaxAnnual) > 0)) {
-                    missingInfoItems.push({ icon: '💰', text: `${p.emoji || '🏠'} ${p.name} — no property tax amount`,
-                      actionLabel: 'Edit', action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
-                  }
-                  if (!(parseFloat(p.insuranceAnnual) > 0)) {
-                    missingInfoItems.push({ icon: '🛡️', text: `${p.emoji || '🏠'} ${p.name} — no insurance amount`,
-                      actionLabel: 'Edit', action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
+                  const missing = [];
+                  if (!(parseFloat(p.propertyTaxAnnual) > 0)) missing.push({ icon: '💰', label: 'Property tax' });
+                  if (!(parseFloat(p.insuranceAnnual) > 0)) missing.push({ icon: '🛡️', label: 'Insurance' });
+                  if (missing.length > 0) {
+                    missingByProperty[p.id] = { property: p, missing };
                   }
                 });
 
@@ -1962,10 +1969,13 @@ export default function DulinProperties() {
                   { id: 'rent', title: 'Past Due Rent', color: 'text-red-400', border: 'border-red-500/20', bg: 'bg-red-500/10', btnColor: 'bg-red-500/20 text-red-300 hover:bg-red-500/30', items: rentItems },
                   { id: 'reports', title: 'Reports to Import', color: 'text-purple-400', border: 'border-purple-500/20', bg: 'bg-purple-500/10', btnColor: 'bg-purple-500/20 text-purple-300 hover:bg-purple-500/30', items: reportItems },
                   { id: 'dianne', title: 'Dianne Dulin Properties', color: 'text-pink-400', border: 'border-pink-500/20', bg: 'bg-pink-500/10', btnColor: 'bg-pink-500/20 text-pink-300 hover:bg-pink-500/30', items: dianneItems },
-                  { id: 'missing', title: 'Missing Property Info', color: 'text-blue-400', border: 'border-blue-500/20', bg: 'bg-blue-500/10', btnColor: 'bg-blue-500/20 text-blue-300 hover:bg-blue-500/30', items: missingInfoItems },
                 ].filter(c => c.items.length > 0);
 
-                const totalCount = categories.reduce((sum, c) => sum + c.items.length, 0);
+                const missingProps = Object.values(missingByProperty);
+                const totalCount = categories.reduce((sum, c) => sum + c.items.length, 0) + missingProps.length;
+
+                const isCardOpen = (id) => expandedMonths[`action-card-${id}`] !== false; // default open
+                const toggleCard = (id) => setExpandedMonths(prev => ({ ...prev, [`action-card-${id}`]: prev[`action-card-${id}`] === false }));
 
                 return (
                   <div className="space-y-4">
@@ -1986,26 +1996,67 @@ export default function DulinProperties() {
 
                     {categories.map(cat => (
                       <div key={cat.id} className={`bg-white/[0.03] border ${cat.border} rounded-2xl overflow-hidden`}>
-                        <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2">
+                        <button
+                          onClick={() => toggleCard(cat.id)}
+                          className="w-full px-4 py-3 border-b border-white/5 flex items-center gap-2 hover:bg-white/[0.02] transition"
+                        >
+                          <ChevronDown className={`w-3.5 h-3.5 ${cat.color} transition-transform flex-shrink-0 ${isCardOpen(cat.id) ? '' : '-rotate-90'}`} />
                           <h3 className={`text-sm font-semibold ${cat.color}`}>{cat.title}</h3>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cat.bg} ${cat.color}`}>{cat.items.length}</span>
-                        </div>
-                        <div className="divide-y divide-white/[0.03]">
-                          {cat.items.map((item, i) => (
-                            <div key={i} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02] transition">
-                              <span className="text-sm flex-shrink-0">{item.icon}</span>
-                              <span className="text-xs text-white/70 flex-1 min-w-0">{item.text}</span>
-                              <button
-                                onClick={item.action}
-                                className={`text-[11px] font-medium px-3 py-1 rounded-lg transition flex-shrink-0 ${cat.btnColor}`}
-                              >
-                                {item.actionLabel}
-                              </button>
-                            </div>
-                          ))}
-                        </div>
+                        </button>
+                        {isCardOpen(cat.id) && (
+                          <div className="divide-y divide-white/[0.03]">
+                            {cat.items.map((item, i) => (
+                              <div key={i} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02] transition">
+                                <span className="text-sm flex-shrink-0">{item.icon}</span>
+                                <span className="text-xs text-white/70 flex-1 min-w-0">{item.text}</span>
+                                <button
+                                  onClick={item.action}
+                                  className={`text-[11px] font-medium px-3 py-1 rounded-lg transition flex-shrink-0 ${cat.btnColor}`}
+                                >
+                                  {item.actionLabel}
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
+
+                    {/* Missing Property Info — grouped by property */}
+                    {missingProps.length > 0 && (
+                      <div className="bg-white/[0.03] border border-blue-500/20 rounded-2xl overflow-hidden">
+                        <button
+                          onClick={() => toggleCard('missing')}
+                          className="w-full px-4 py-3 border-b border-white/5 flex items-center gap-2 hover:bg-white/[0.02] transition"
+                        >
+                          <ChevronDown className={`w-3.5 h-3.5 text-blue-400 transition-transform flex-shrink-0 ${isCardOpen('missing') ? '' : '-rotate-90'}`} />
+                          <h3 className="text-sm font-semibold text-blue-400">Missing Property Info</h3>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400">{missingProps.length} properties</span>
+                        </button>
+                        {isCardOpen('missing') && (
+                          <div className="divide-y divide-white/[0.03]">
+                            {missingProps.map(({ property: p, missing }) => (
+                              <div key={p.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02] transition">
+                                <span className="text-sm flex-shrink-0">{p.emoji || '🏠'}</span>
+                                <div className="flex-1 min-w-0">
+                                  <span className="text-xs text-white/70 font-medium">{p.name}</span>
+                                  <span className="text-[11px] text-white/40 ml-2">
+                                    — missing {missing.map(m => m.label.toLowerCase()).join(', ')}
+                                  </span>
+                                </div>
+                                <button
+                                  onClick={() => { setActiveSection('rentals'); setSelectedProperty(p); }}
+                                  className="text-[11px] font-medium px-3 py-1 rounded-lg transition flex-shrink-0 bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
+                                >
+                                  Edit
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })()}
