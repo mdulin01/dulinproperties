@@ -90,7 +90,7 @@ export default function ReconcileModal({ month, monthLabel, reportData, mgrEmoji
         </div>
 
         <p className="text-xs text-white/40 mb-4">
-          Compare dashboard subtotals with each management company's statement. Enter their reported total and confirm when they match.
+          Compare management company statement totals with imported data. Owner-paid expenses (FFB bank, manual) are excluded from these totals.
         </p>
 
         {/* Per-manager sections */}
@@ -164,9 +164,9 @@ export default function ReconcileModal({ month, monthLabel, reportData, mgrEmoji
                   </div>
                 </div>
 
-                {/* Dashboard net total */}
+                {/* Managed net total (statement data only) */}
                 <div className="flex items-center justify-between py-2 px-3 mb-3 bg-white/[0.04] rounded-xl">
-                  <span className="text-xs font-semibold text-white/60">Dashboard Net Total</span>
+                  <span className="text-xs font-semibold text-white/60">Statement Data Total</span>
                   <span className="text-sm font-bold text-white">{formatCurrency(dashboardTotal)}</span>
                 </div>
 

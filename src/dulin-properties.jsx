@@ -1256,18 +1256,42 @@ export default function DulinProperties() {
                       ? (e.date || '').startsWith(yearStr)
                       : (e.date || '').startsWith(selectedMonth)));
 
+                    // Classify expense source: management company vs owner-paid
+                    const isManagedExpense = (e) => {
+                      if (e.sourceDocument === 'Absolute' || e.sourceDocument === 'Barnett & Hill') return true;
+                      if (e.source === 'owner-packet') return true;
+                      return false;
+                    };
+
+                    // Compute totals for a set of expenses
+                    const sumExpenses = (exps) => ({
+                      mgmtFee: exps.filter(e => e.category === 'management-fee').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
+                      repairs: exps.filter(e => ['repair', 'plumbing', 'electrical', 'hvac', 'appliance'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
+                      supplies: exps.filter(e => ['cleaning', 'pest-control', 'landscaping'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
+                      utilities: exps.filter(e => ['utilities', 'internet'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
+                      dist: exps.filter(e => e.category === 'owner-distribution').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
+                    });
+
                     const reportData = mgrOrder.map(mgr => {
                       const mgrProps = properties.filter(p => getManager(p.color) === mgr);
                       const propRows = mgrProps.map(p => {
                         const pid = String(p.id);
                         const rent = monthRent.filter(r => String(r.propertyId) === pid).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
                         const pExp = monthExp.filter(e => String(e.propertyId) === pid);
-                        const mgmtFee = pExp.filter(e => e.category === 'management-fee').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                        const repairs = pExp.filter(e => ['repair', 'plumbing', 'electrical', 'hvac', 'appliance'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                        const supplies = pExp.filter(e => ['cleaning', 'pest-control', 'landscaping'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                        const utilities = pExp.filter(e => ['utilities', 'internet'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                        const dist = pExp.filter(e => e.category === 'owner-distribution').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                        return { name: `${p.emoji || '🏠'} ${p.name}`, rent, mgmtFee, repairs, supplies, utilities, dist };
+                        const managedExp = pExp.filter(isManagedExpense);
+                        const ownerExp = pExp.filter(e => !isManagedExpense(e));
+                        const managed = sumExpenses(managedExp);
+                        const owner = sumExpenses(ownerExp);
+                        // Total = managed + owner (for display)
+                        return {
+                          name: `${p.emoji || '🏠'} ${p.name}`, rent,
+                          mgmtFee: managed.mgmtFee + owner.mgmtFee, repairs: managed.repairs + owner.repairs,
+                          supplies: managed.supplies + owner.supplies, utilities: managed.utilities + owner.utilities,
+                          dist: managed.dist + owner.dist,
+                          // Separate owner-paid totals
+                          ownerMgmtFee: owner.mgmtFee, ownerRepairs: owner.repairs,
+                          ownerSupplies: owner.supplies, ownerUtilities: owner.utilities, ownerDist: owner.dist,
+                        };
                       });
 
                       const totals = propRows.reduce((t, r) => ({
@@ -1275,7 +1299,25 @@ export default function DulinProperties() {
                         supplies: t.supplies + r.supplies, utilities: t.utilities + r.utilities, dist: t.dist + r.dist,
                       }), { rent: 0, mgmtFee: 0, repairs: 0, supplies: 0, utilities: 0, dist: 0 });
 
-                      return { manager: mgr, props: propRows, totals };
+                      // Owner-paid subtotals
+                      const ownerTotals = propRows.reduce((t, r) => ({
+                        mgmtFee: t.mgmtFee + r.ownerMgmtFee, repairs: t.repairs + r.ownerRepairs,
+                        supplies: t.supplies + r.ownerSupplies, utilities: t.utilities + r.ownerUtilities, dist: t.dist + r.ownerDist,
+                      }), { mgmtFee: 0, repairs: 0, supplies: 0, utilities: 0, dist: 0 });
+
+                      // Managed-only subtotals (for reconciliation)
+                      const managedTotals = {
+                        rent: totals.rent,
+                        mgmtFee: totals.mgmtFee - ownerTotals.mgmtFee,
+                        repairs: totals.repairs - ownerTotals.repairs,
+                        supplies: totals.supplies - ownerTotals.supplies,
+                        utilities: totals.utilities - ownerTotals.utilities,
+                        dist: totals.dist - ownerTotals.dist,
+                      };
+
+                      const hasOwnerExpenses = Object.values(ownerTotals).some(v => v > 0);
+
+                      return { manager: mgr, props: propRows, totals, ownerTotals, managedTotals, hasOwnerExpenses };
                     });
 
                     const grandTotal = reportData.reduce((t, g) => ({
@@ -1375,16 +1417,28 @@ export default function DulinProperties() {
                                   <span className="text-xs text-right text-blue-400/60">{row.dist > 0 ? formatCurrency(row.dist) : '—'}</span>
                                 </div>
                               ))}
-                              {/* Manager subtotal */}
+                              {/* Manager subtotal (statement/managed expenses only) */}
                               <div className={`grid grid-cols-8 gap-1 px-4 py-1.5 border-b border-white/5 ${(reconciliations[selectedMonth]?.[group.manager]?.confirmed || reconciliations[selectedMonth]?.[group.manager]?.autoMatch) ? 'bg-green-500/[0.06]' : 'bg-white/[0.02]'}`}>
                                 <span className="col-span-2 text-[10px] font-semibold text-white/40 uppercase">Subtotal</span>
-                                <span className="text-[10px] text-right font-semibold text-emerald-400/60">{group.totals.rent > 0 ? formatCurrency(group.totals.rent) : '—'}</span>
-                                <span className="text-[10px] text-right font-semibold text-yellow-400/40">{group.totals.mgmtFee > 0 ? formatCurrency(group.totals.mgmtFee) : '—'}</span>
-                                <span className="text-[10px] text-right font-semibold text-red-400/40">{group.totals.repairs > 0 ? formatCurrency(group.totals.repairs) : '—'}</span>
-                                <span className="text-[10px] text-right font-semibold text-amber-400/40">{group.totals.supplies > 0 ? formatCurrency(group.totals.supplies) : '—'}</span>
-                                <span className="text-[10px] text-right font-semibold text-orange-400/40">{group.totals.utilities > 0 ? formatCurrency(group.totals.utilities) : '—'}</span>
-                                <span className="text-[10px] text-right font-semibold text-blue-400/40">{group.totals.dist > 0 ? formatCurrency(group.totals.dist) : '—'}</span>
+                                <span className="text-[10px] text-right font-semibold text-emerald-400/60">{group.managedTotals.rent > 0 ? formatCurrency(group.managedTotals.rent) : '—'}</span>
+                                <span className="text-[10px] text-right font-semibold text-yellow-400/40">{group.managedTotals.mgmtFee > 0 ? formatCurrency(group.managedTotals.mgmtFee) : '—'}</span>
+                                <span className="text-[10px] text-right font-semibold text-red-400/40">{group.managedTotals.repairs > 0 ? formatCurrency(group.managedTotals.repairs) : '—'}</span>
+                                <span className="text-[10px] text-right font-semibold text-amber-400/40">{group.managedTotals.supplies > 0 ? formatCurrency(group.managedTotals.supplies) : '—'}</span>
+                                <span className="text-[10px] text-right font-semibold text-orange-400/40">{group.managedTotals.utilities > 0 ? formatCurrency(group.managedTotals.utilities) : '—'}</span>
+                                <span className="text-[10px] text-right font-semibold text-blue-400/40">{group.managedTotals.dist > 0 ? formatCurrency(group.managedTotals.dist) : '—'}</span>
                               </div>
+                              {/* Owner-paid expenses row (FFB bank / manual) */}
+                              {group.hasOwnerExpenses && (
+                                <div className="grid grid-cols-8 gap-1 px-4 py-1.5 border-b border-white/5 bg-amber-500/[0.03]">
+                                  <span className="col-span-2 text-[10px] font-semibold text-amber-400/60 uppercase">+ Owner Paid</span>
+                                  <span className="text-[10px] text-right text-white/20">—</span>
+                                  <span className="text-[10px] text-right font-semibold text-yellow-400/30">{group.ownerTotals.mgmtFee > 0 ? formatCurrency(group.ownerTotals.mgmtFee) : '—'}</span>
+                                  <span className="text-[10px] text-right font-semibold text-red-400/30">{group.ownerTotals.repairs > 0 ? formatCurrency(group.ownerTotals.repairs) : '—'}</span>
+                                  <span className="text-[10px] text-right font-semibold text-amber-400/30">{group.ownerTotals.supplies > 0 ? formatCurrency(group.ownerTotals.supplies) : '—'}</span>
+                                  <span className="text-[10px] text-right font-semibold text-orange-400/30">{group.ownerTotals.utilities > 0 ? formatCurrency(group.ownerTotals.utilities) : '—'}</span>
+                                  <span className="text-[10px] text-right font-semibold text-blue-400/30">{group.ownerTotals.dist > 0 ? formatCurrency(group.ownerTotals.dist) : '—'}</span>
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -2140,29 +2194,26 @@ export default function DulinProperties() {
             if (color.includes('rose') || color.includes('pink')) return 'Dianne Dulin';
             return 'Absolute';
           };
+          // Only include management-company-sourced expenses (not FFB/manual)
+          const isManagedExp = (e) => e.sourceDocument === 'Absolute' || e.sourceDocument === 'Barnett & Hill' || e.source === 'owner-packet';
+          const sumExp = (exps) => ({
+            mgmtFee: exps.filter(e => e.category === 'management-fee').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
+            repairs: exps.filter(e => ['repair', 'plumbing', 'electrical', 'hvac', 'appliance'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
+            supplies: exps.filter(e => ['cleaning', 'pest-control', 'landscaping'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
+            utilities: exps.filter(e => ['utilities', 'internet'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
+            dist: exps.filter(e => e.category === 'owner-distribution').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
+          });
           const mgrOrder = ['Absolute', 'Barnett & Hill', 'Dianne Dulin'];
           const mgrEmoji = { 'Absolute': '🏠', 'Barnett & Hill': '🏢', 'Dianne Dulin': '👩' };
           const mgrColors = { 'Barnett & Hill': 'text-purple-400 border-purple-500/20 bg-purple-500/10', 'Absolute': 'text-teal-400 border-teal-500/20 bg-teal-500/10', 'Dianne Dulin': 'text-pink-400 border-pink-500/20 bg-pink-500/10' };
           const monthRent = rentPayments.filter(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(sm));
-          const monthExp = expenses.filter(e => (e.date || '').startsWith(sm));
+          const monthExp = expenses.filter(e => (e.date || '').startsWith(sm) && isManagedExp(e));
           const rd = mgrOrder.map(mgr => {
             const mgrProps = properties.filter(p => getManager(p.color) === mgr);
-            const propRows = mgrProps.map(p => {
-              const pid = String(p.id);
-              const rent = monthRent.filter(r => String(r.propertyId) === pid).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
-              const pExp = monthExp.filter(e => String(e.propertyId) === pid);
-              const mgmtFee = pExp.filter(e => e.category === 'management-fee').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-              const repairs = pExp.filter(e => ['repair', 'plumbing', 'electrical', 'hvac', 'appliance'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-              const supplies = pExp.filter(e => ['cleaning', 'pest-control', 'landscaping'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-              const utilities = pExp.filter(e => ['utilities', 'internet'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-              const dist = pExp.filter(e => e.category === 'owner-distribution').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-              return { rent, mgmtFee, repairs, supplies, utilities, dist };
-            });
-            const totals = propRows.reduce((t, r) => ({
-              rent: t.rent + r.rent, mgmtFee: t.mgmtFee + r.mgmtFee, repairs: t.repairs + r.repairs,
-              supplies: t.supplies + r.supplies, utilities: t.utilities + r.utilities, dist: t.dist + r.dist,
-            }), { rent: 0, mgmtFee: 0, repairs: 0, supplies: 0, utilities: 0, dist: 0 });
-            return { manager: mgr, totals };
+            const rent = mgrProps.reduce((s, p) => s + monthRent.filter(r => String(r.propertyId) === String(p.id)).reduce((rs, r) => rs + (parseFloat(r.amount) || 0), 0), 0);
+            const mgrExp = mgrProps.flatMap(p => monthExp.filter(e => String(e.propertyId) === String(p.id)));
+            const expTotals = sumExp(mgrExp);
+            return { manager: mgr, totals: { rent, ...expTotals } };
           });
           const ml = new Date(parseInt(sm.split('-')[0]), parseInt(sm.split('-')[1]) - 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
           return (
