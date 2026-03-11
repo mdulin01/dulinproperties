@@ -805,7 +805,7 @@ export default function DulinProperties() {
     { id: 'dashboard', label: 'Dashboard', emoji: '📊' },
     { id: 'rentals', label: 'Properties', emoji: '🏠' },
     { id: 'tenants', label: 'Tenants', emoji: '👤' },
-    { id: 'rent', label: 'Rent', emoji: '💰' },
+    { id: 'rent', label: 'Income', emoji: '💰' },
     { id: 'expenses', label: 'Expenses', emoji: '💸' },
     { id: 'documents', label: 'Documents', emoji: '📄' },
   ];
@@ -906,7 +906,7 @@ export default function DulinProperties() {
                   { id: 'dashboard', label: 'Dashboard', emoji: '📊' },
                   { id: 'rentals', label: 'Properties', emoji: '🏠' },
                   { id: 'tenants', label: 'Tenants', emoji: '👤' },
-                  { id: 'rent', label: 'Rents', emoji: '💰' },
+                  { id: 'rent', label: 'Income', emoji: '💰' },
                   { id: 'expenses', label: 'Expenses', emoji: '💸' },
                   { id: 'documents', label: 'Documents', emoji: '📄' },
                 ].map(tab => (
@@ -2283,7 +2283,7 @@ export default function DulinProperties() {
                   { id: 'dashboard', label: 'Home', emoji: '📊', gradient: 'from-purple-500 to-violet-500' },
                   { id: 'rentals', label: 'Props', emoji: '🏠', gradient: 'from-teal-400 to-cyan-500' },
                   { id: 'tenants', label: 'Tenants', emoji: '👤', gradient: 'from-blue-400 to-indigo-500' },
-                  { id: 'rent', label: 'Rent', emoji: '💰', gradient: 'from-emerald-400 to-green-500' },
+                  { id: 'rent', label: 'Income', emoji: '💰', gradient: 'from-emerald-400 to-green-500' },
                   { id: 'expenses', label: 'Costs', emoji: '💸', gradient: 'from-red-400 to-rose-500' },
                   { id: 'documents', label: 'Docs', emoji: '📄', gradient: 'from-amber-400 to-orange-500' },
                 ].map((section) => (

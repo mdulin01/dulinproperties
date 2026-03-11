@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Trash2 } from 'lucide-react';
-import { rentStatuses } from '../../constants';
+import { rentStatuses, incomeCategories } from '../../constants';
 import { getPropertyTenants } from '../../hooks/useProperties';
 
 export default function AddRentPaymentModal({ payment, properties, onSave, onDelete, onClose }) {
@@ -10,6 +10,7 @@ export default function AddRentPaymentModal({ payment, properties, onSave, onDel
     propertyId: '',
     tenantName: '',
     propertyName: '',
+    category: 'rent',
     month: '',
     amount: '',
     datePaid: '',
@@ -23,6 +24,7 @@ export default function AddRentPaymentModal({ payment, properties, onSave, onDel
         propertyId: payment.propertyId || '',
         tenantName: payment.tenantName || '',
         propertyName: payment.propertyName || '',
+        category: payment.category || 'rent',
         month: payment.month || '',
         amount: payment.amount || '',
         datePaid: payment.datePaid || '',
@@ -66,7 +68,7 @@ export default function AddRentPaymentModal({ payment, properties, onSave, onDel
       <div className="relative w-full max-w-md bg-slate-800 border border-white/10 rounded-t-3xl md:rounded-3xl p-6 max-h-[85vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-white">{isEditing ? 'Edit Payment' : 'Record Rent Payment'}</h2>
+          <h2 className="text-lg font-bold text-white">{isEditing ? 'Edit Income' : 'Record Income'}</h2>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20">
             <X className="w-4 h-4 text-white/60" />
           </button>
@@ -84,6 +86,20 @@ export default function AddRentPaymentModal({ payment, properties, onSave, onDel
               <option value="">Select property...</option>
               {properties.map(p => (
                 <option key={p.id} value={p.id}>{p.emoji || '🏠'} {p.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Category */}
+          <div>
+            <label className="text-xs text-white/40 mb-1 block">Category</label>
+            <select
+              value={form.category}
+              onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+              className="w-full px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500/50"
+            >
+              {incomeCategories.map(c => (
+                <option key={c.value} value={c.value}>{c.emoji} {c.label}</option>
               ))}
             </select>
           </div>
@@ -181,7 +197,7 @@ export default function AddRentPaymentModal({ payment, properties, onSave, onDel
             disabled={!form.propertyId}
             className="px-6 py-2 bg-emerald-500 text-white rounded-xl text-sm font-medium hover:bg-emerald-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isEditing ? 'Update' : 'Record Payment'}
+            {isEditing ? 'Update' : 'Record Income'}
           </button>
         </div>
       </div>

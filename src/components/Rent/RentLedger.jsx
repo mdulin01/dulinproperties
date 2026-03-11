@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { Search, Plus, ChevronDown, ChevronUp, DollarSign, CheckSquare, Square, X, Trash2 } from 'lucide-react';
-import { rentStatuses } from '../../constants';
+import { rentStatuses, incomeCategories } from '../../constants';
 import { formatDate, formatCurrency } from '../../utils';
 import { getPropertyTenants } from '../../hooks/useProperties';
 
@@ -69,6 +69,7 @@ export default function RentLedger({ rentPayments, properties, onAdd, onEdit, on
         case 'property': return dir * (a.propertyName || '').localeCompare(b.propertyName || '');
         case 'date': return dir * (a.datePaid || 'zzzz').localeCompare(b.datePaid || 'zzzz');
         case 'amount': return dir * ((a.amount || 0) - (b.amount || 0));
+        case 'category': return dir * (a.category || 'rent').localeCompare(b.category || 'rent');
         case 'status': return dir * (a.status || '').localeCompare(b.status || '');
         default: return 0;
       }
@@ -126,6 +127,11 @@ export default function RentLedger({ rentPayments, properties, onAdd, onEdit, on
     return sorted.filter(r => selectedIds.has(r.id)).reduce((sum, r) => sum + (r.amount || 0), 0);
   }, [sorted, selectedIds]);
 
+  const getCategoryLabel = (category) => {
+    const cat = incomeCategories.find(c => c.value === category);
+    return cat ? `${cat.emoji} ${cat.label}` : '💰 Rent';
+  };
+
   const getStatusBadge = (status) => {
     const s = rentStatuses.find(rs => rs.value === status);
     if (!s) return <span className="text-xs text-white/40">{status}</span>;
@@ -149,8 +155,8 @@ export default function RentLedger({ rentPayments, properties, onAdd, onEdit, on
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-xl font-bold text-white">Rent</h2>
-          <p className="text-xs text-white/40">{rentPayments.length} payment records</p>
+          <h2 className="text-xl font-bold text-white">Income</h2>
+          <p className="text-xs text-white/40">{rentPayments.length} income records</p>
         </div>
         <div className="flex items-center gap-2">
           {!selectMode && sorted.length > 0 && (
@@ -165,7 +171,7 @@ export default function RentLedger({ rentPayments, properties, onAdd, onEdit, on
             onClick={onAdd}
             className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500 text-white rounded-xl text-sm font-medium hover:bg-emerald-600 transition"
           >
-            <Plus className="w-4 h-4" /> Record Payment
+            <Plus className="w-4 h-4" /> Record Income
           </button>
         </div>
       </div>
@@ -293,6 +299,9 @@ export default function RentLedger({ rentPayments, properties, onAdd, onEdit, on
                   <th className="text-left px-4 py-3 text-xs font-semibold text-white/40 uppercase tracking-wide cursor-pointer hover:text-white/60" onClick={() => handleSort('property')}>
                     Property <SortIcon col="property" />
                   </th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-white/40 uppercase tracking-wide cursor-pointer hover:text-white/60" onClick={() => handleSort('category')}>
+                    Category <SortIcon col="category" />
+                  </th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-white/40 uppercase tracking-wide cursor-pointer hover:text-white/60" onClick={() => handleSort('amount')}>
                     Amount <SortIcon col="amount" />
                   </th>
@@ -325,6 +334,9 @@ export default function RentLedger({ rentPayments, properties, onAdd, onEdit, on
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-sm text-white/70">{payment.propertyName || '—'}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-sm text-white/70">{getCategoryLabel(payment.category)}</span>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <span className="text-sm font-medium text-emerald-400">{formatCurrency(payment.amount || 0)}</span>

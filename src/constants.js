@@ -159,6 +159,7 @@ export const incomeCategories = [
   { value: 'refund', label: 'Refund', emoji: '↩️' },
   { value: 'parking', label: 'Parking', emoji: '🅿️' },
   { value: 'laundry', label: 'Laundry', emoji: '🧺' },
+  { value: 'interest', label: 'Interest', emoji: '🏦' },
   { value: 'other', label: 'Other Income', emoji: '💵' },
 ];
 
