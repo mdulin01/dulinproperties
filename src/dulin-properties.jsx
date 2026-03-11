@@ -38,6 +38,7 @@ import TenantsList from './components/Tenants/TenantsList';
 // Rent components
 import RentLedger from './components/Rent/RentLedger';
 import AddRentPaymentModal from './components/Rent/AddRentPaymentModal';
+import ReconcileModal from './components/Rent/ReconcileModal';
 
 // Expenses components
 import ExpensesList from './components/Expenses/ExpensesList';
@@ -120,8 +121,8 @@ export default function DulinProperties() {
   const [expandedMonths, setExpandedMonths] = useState({});
   const [monthlySummaryCollapsed, setMonthlySummaryCollapsed] = useState(false);
   const [monthlyReportMonth, setMonthlyReportMonth] = useState(null); // YYYY-MM string for the report view
-  const [reconciliations, setReconciliations] = useState({}); // { "YYYY-MM": { "Absolute": true, ... } }
-  const [showReconcileMode, setShowReconcileMode] = useState(false);
+  const [reconciliations, setReconciliations] = useState({}); // { "YYYY-MM": { "Absolute": { confirmed, statementTotal, dashboardTotal, autoMatch, reconciledAt }, ... } }
+  const [showReconcileModal, setShowReconcileModal] = useState(false);
 
   // Search
   const [showSearch, setShowSearch] = useState(false);
@@ -350,18 +351,17 @@ export default function DulinProperties() {
 
   useEffect(() => { saveRentRef.current = saveRentToFirestore; }, [saveRentToFirestore]);
 
-  const saveReconciliation = useCallback(async (month, manager, checked) => {
+  const saveReconciliation = useCallback(async (month, monthData) => {
     if (!user) return;
     try {
-      const updated = { ...reconciliations };
-      if (!updated[month]) updated[month] = {};
-      updated[month][manager] = checked;
+      const updated = { ...reconciliations, [month]: monthData };
       setReconciliations(updated);
       await setDoc(doc(db, 'rentalData', 'reconciliations'), {
         months: updated,
         lastUpdated: new Date().toISOString(),
         updatedBy: currentUser,
       }, { merge: true });
+      showToast('Reconciliation saved', 'success');
     } catch (error) {
       logger.error('[reconciliation] save FAILED:', error);
       showToast('Failed to save reconciliation.', 'error');
@@ -1289,16 +1289,20 @@ export default function DulinProperties() {
                         <div className="px-4 py-3 border-b border-white/5">
                           <div className="flex items-center justify-between mb-2">
                             <h3 className="text-sm font-semibold text-white/70">Monthly Report <span className="font-normal text-white/40">— {selectedLabel}</span></h3>
-                            {!isYtd && (
-                              <button
-                                onClick={() => setShowReconcileMode(m => !m)}
-                                className={`px-3 py-1 rounded-lg text-xs font-medium transition ${
-                                  showReconcileMode ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/50 hover:bg-white/20'
-                                }`}
-                              >
-                                {showReconcileMode ? '✓ Reconciling' : 'Reconcile Data'}
-                              </button>
-                            )}
+                            {!isYtd && (() => {
+                              const monthRecon = reconciliations[selectedMonth] || {};
+                              const allDone = mgrOrder.every(mgr => monthRecon[mgr]?.confirmed || monthRecon[mgr]?.autoMatch);
+                              return (
+                                <button
+                                  onClick={() => setShowReconcileModal(true)}
+                                  className={`px-3 py-1 rounded-lg text-xs font-medium transition ${
+                                    allDone ? 'bg-emerald-500 text-white' : 'bg-white/10 text-white/50 hover:bg-white/20'
+                                  }`}
+                                >
+                                  {allDone ? '✓ Reconciled' : 'Reconcile Data'}
+                                </button>
+                              );
+                            })()}
                           </div>
                           <div className="flex gap-1">
                             {Array.from({ length: 12 }, (_, i) => {
@@ -1349,8 +1353,13 @@ export default function DulinProperties() {
                               <div className={`px-4 py-2 border-b border-white/5 ${gc.split(' ')[2] || 'bg-white/5'} flex items-center justify-between`}>
                                 <span className={`text-xs font-bold ${gc.split(' ')[0]}`}>
                                   {mgrEmoji[group.manager] || '📋'} {group.manager}
-                                  {!isYtd && reconciliations[selectedMonth]?.[group.manager] && (
-                                    <span className="ml-2 text-green-400" title="Reconciled">✓</span>
+                                  {!isYtd && (reconciliations[selectedMonth]?.[group.manager]?.confirmed || reconciliations[selectedMonth]?.[group.manager]?.autoMatch) && (
+                                    <span
+                                      className="ml-2 text-green-400 cursor-default"
+                                      title={reconciliations[selectedMonth]?.[group.manager]?.reconciledAt
+                                        ? `Reconciled ${new Date(reconciliations[selectedMonth][group.manager].reconciledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}`
+                                        : 'Reconciled'}
+                                    >✓</span>
                                   )}
                                 </span>
                               </div>
@@ -1367,23 +1376,8 @@ export default function DulinProperties() {
                                 </div>
                               ))}
                               {/* Manager subtotal */}
-                              <div className={`grid grid-cols-8 gap-1 px-4 py-1.5 border-b border-white/5 ${reconciliations[selectedMonth]?.[group.manager] ? 'bg-green-500/[0.06]' : 'bg-white/[0.02]'}`}>
-                                <span className="col-span-2 text-[10px] font-semibold text-white/40 uppercase flex items-center gap-2">
-                                  Subtotal
-                                  {showReconcileMode && !isYtd && (
-                                    <label className="flex items-center gap-1 cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        checked={!!reconciliations[selectedMonth]?.[group.manager]}
-                                        onChange={(e) => saveReconciliation(selectedMonth, group.manager, e.target.checked)}
-                                        className="w-3.5 h-3.5 rounded accent-emerald-500"
-                                      />
-                                      <span className={`text-[9px] ${reconciliations[selectedMonth]?.[group.manager] ? 'text-green-400' : 'text-white/30'}`}>
-                                        {reconciliations[selectedMonth]?.[group.manager] ? 'Reconciled' : 'OK?'}
-                                      </span>
-                                    </label>
-                                  )}
-                                </span>
+                              <div className={`grid grid-cols-8 gap-1 px-4 py-1.5 border-b border-white/5 ${(reconciliations[selectedMonth]?.[group.manager]?.confirmed || reconciliations[selectedMonth]?.[group.manager]?.autoMatch) ? 'bg-green-500/[0.06]' : 'bg-white/[0.02]'}`}>
+                                <span className="col-span-2 text-[10px] font-semibold text-white/40 uppercase">Subtotal</span>
                                 <span className="text-[10px] text-right font-semibold text-emerald-400/60">{group.totals.rent > 0 ? formatCurrency(group.totals.rent) : '—'}</span>
                                 <span className="text-[10px] text-right font-semibold text-yellow-400/40">{group.totals.mgmtFee > 0 ? formatCurrency(group.totals.mgmtFee) : '—'}</span>
                                 <span className="text-[10px] text-right font-semibold text-red-400/40">{group.totals.repairs > 0 ? formatCurrency(group.totals.repairs) : '—'}</span>
@@ -2133,6 +2127,57 @@ export default function DulinProperties() {
             onClose={() => setShowAddRentModal(null)}
           />
         )}
+
+        {/* Reconcile Modal */}
+        {showReconcileModal && (() => {
+          const yearStr = String(new Date().getFullYear());
+          const reportMonths = Array.from({ length: 12 }, (_, i) => `${yearStr}-${String(i + 1).padStart(2, '0')}`);
+          const sm = monthlyReportMonth || reportMonths[reportMonths.length - 1];
+          if (!sm || sm === 'ytd') return null;
+          const getManager = (color) => {
+            if (!color) return 'Absolute';
+            if (color.includes('purple') || color.includes('violet') || color.includes('indigo')) return 'Barnett & Hill';
+            if (color.includes('rose') || color.includes('pink')) return 'Dianne Dulin';
+            return 'Absolute';
+          };
+          const mgrOrder = ['Absolute', 'Barnett & Hill', 'Dianne Dulin'];
+          const mgrEmoji = { 'Absolute': '🏠', 'Barnett & Hill': '🏢', 'Dianne Dulin': '👩' };
+          const mgrColors = { 'Barnett & Hill': 'text-purple-400 border-purple-500/20 bg-purple-500/10', 'Absolute': 'text-teal-400 border-teal-500/20 bg-teal-500/10', 'Dianne Dulin': 'text-pink-400 border-pink-500/20 bg-pink-500/10' };
+          const monthRent = rentPayments.filter(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(sm));
+          const monthExp = expenses.filter(e => (e.date || '').startsWith(sm));
+          const rd = mgrOrder.map(mgr => {
+            const mgrProps = properties.filter(p => getManager(p.color) === mgr);
+            const propRows = mgrProps.map(p => {
+              const pid = String(p.id);
+              const rent = monthRent.filter(r => String(r.propertyId) === pid).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+              const pExp = monthExp.filter(e => String(e.propertyId) === pid);
+              const mgmtFee = pExp.filter(e => e.category === 'management-fee').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+              const repairs = pExp.filter(e => ['repair', 'plumbing', 'electrical', 'hvac', 'appliance'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+              const supplies = pExp.filter(e => ['cleaning', 'pest-control', 'landscaping'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+              const utilities = pExp.filter(e => ['utilities', 'internet'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+              const dist = pExp.filter(e => e.category === 'owner-distribution').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+              return { rent, mgmtFee, repairs, supplies, utilities, dist };
+            });
+            const totals = propRows.reduce((t, r) => ({
+              rent: t.rent + r.rent, mgmtFee: t.mgmtFee + r.mgmtFee, repairs: t.repairs + r.repairs,
+              supplies: t.supplies + r.supplies, utilities: t.utilities + r.utilities, dist: t.dist + r.dist,
+            }), { rent: 0, mgmtFee: 0, repairs: 0, supplies: 0, utilities: 0, dist: 0 });
+            return { manager: mgr, totals };
+          });
+          const ml = new Date(parseInt(sm.split('-')[0]), parseInt(sm.split('-')[1]) - 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+          return (
+            <ReconcileModal
+              month={sm}
+              monthLabel={ml}
+              reportData={rd}
+              mgrEmoji={mgrEmoji}
+              mgrColors={mgrColors}
+              existing={reconciliations[sm]}
+              onSave={(monthData) => { saveReconciliation(sm, monthData); setShowReconcileModal(false); }}
+              onClose={() => setShowReconcileModal(false)}
+            />
+          );
+        })()}
 
         {/* Expense Modal */}
         {showAddExpenseModal && (
