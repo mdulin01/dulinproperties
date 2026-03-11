@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, X, Search, LogOut, User, Loader, MoreVertical, ChevronDown, Edit3, Trash2, Eye, DollarSign, MapPin, Calendar, FileText, CheckSquare, Upload } from 'lucide-react';
+import { Plus, X, Search, LogOut, User, Loader, MoreVertical, ChevronDown, ChevronRight, Edit3, Trash2, Eye, DollarSign, MapPin, Calendar, FileText, CheckSquare, Upload } from 'lucide-react';
 
 // Constants and utilities
 import {
@@ -842,6 +842,7 @@ export default function DulinProperties() {
     { id: 'rent', label: 'Income', emoji: '💰' },
     { id: 'expenses', label: 'Expenses', emoji: '💸' },
     { id: 'documents', label: 'Documents', emoji: '📄' },
+    { id: 'actions', label: 'Action Items', emoji: '⚡' },
   ];
   const activeSectionInfo = allSections.find(s => s.id === activeSection) || allSections[0];
 
@@ -1392,185 +1393,69 @@ export default function DulinProperties() {
                     );
                   })()}
 
-                  {/* Action Items — comprehensive reminders */}
+                  {/* Action Items — quick summary link */}
                   {(() => {
-                    const actionItems = [];
+                    // Quick count of action items for badge
                     const today = new Date(); today.setHours(0, 0, 0, 0);
                     const currentYearStr = String(today.getFullYear());
                     const currentMonth = `${currentYearStr}-${String(today.getMonth() + 1).padStart(2, '0')}`;
                     const lastMonth = today.getMonth() === 0
                       ? `${today.getFullYear() - 1}-12`
                       : `${currentYearStr}-${String(today.getMonth()).padStart(2, '0')}`;
-
-                    // Vacant properties
-                    vacantProperties.forEach(p => {
-                      actionItems.push({ priority: 1, icon: '🔴', category: 'Vacant', color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/20',
-                        text: `${p.emoji || '🏠'} ${p.name} is vacant`, action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
-                    });
-
-                    // Expired leases
-                    leaseExpiredProperties.forEach(p => {
-                      const tenants = getPropertyTenants(p);
-                      const earliestEnd = tenants.map(t => t.leaseEnd).filter(Boolean).sort()[0];
-                      const label = earliestEnd ? ` (expired ${new Date(earliestEnd + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })})` : '';
-                      actionItems.push({ priority: 2, icon: '📋', category: 'Lease Renewal', color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/20',
-                        text: `${p.emoji || '🏠'} ${p.name} — lease expired${label}`, action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
-                    });
-
-                    // Expiring leases
-                    expiringLeases.forEach(p => {
-                      const tenants = getPropertyTenants(p);
-                      const soonestEnd = tenants.map(t => t.leaseEnd).filter(Boolean).sort()[0];
-                      const end = new Date(soonestEnd + 'T00:00:00');
-                      const days = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
-                      actionItems.push({ priority: 3, icon: '⏳', category: 'Lease Renewal', color: 'text-yellow-400', bg: 'bg-yellow-500/10 border-yellow-500/20',
-                        text: `${p.emoji || '🏠'} ${p.name} — lease expires in ${days}d`, action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
-                    });
-
-                    // Missing lease dates (occupied but no lease dates on any tenant)
+                    let count = 0;
+                    count += vacantProperties.length;
+                    count += leaseExpiredProperties.length;
+                    count += expiringLeases.length;
+                    // Missing lease dates
                     properties.forEach(p => {
                       const status = getEffectiveStatus(p);
                       if (!['occupied', 'month-to-month'].includes(status)) return;
-                      const tenants = getPropertyTenants(p);
-                      const hasLeaseDates = tenants.some(t => t.leaseStart || t.leaseEnd);
-                      if (!hasLeaseDates) {
-                        actionItems.push({ priority: 5, icon: '📝', category: 'Missing Info', color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20',
-                          groupKey: 'No lease dates', text: `${p.emoji || '🏠'} ${p.name} — no lease dates entered`, action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
-                      }
+                      if (!getPropertyTenants(p).some(t => t.leaseStart || t.leaseEnd)) count++;
                     });
-
-                    // Missing property tax
-                    properties.forEach(p => {
-                      if (!(parseFloat(p.propertyTaxAnnual) > 0)) {
-                        actionItems.push({ priority: 7, icon: '💰', category: 'Missing Info', color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20',
-                          groupKey: 'No property tax', text: `${p.emoji || '🏠'} ${p.name} — no property tax amount`, action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
-                      }
-                    });
-
-                    // Missing insurance
-                    properties.forEach(p => {
-                      if (!(parseFloat(p.insuranceAnnual) > 0)) {
-                        actionItems.push({ priority: 7, icon: '🛡️', category: 'Missing Info', color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20',
-                          groupKey: 'No insurance amount', text: `${p.emoji || '🏠'} ${p.name} — no insurance amount`, action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
-                      }
-                    });
-
-                    // Past due rent (occupied properties with no rent paid this month after the 5th)
+                    // Past due rent
                     if (today.getDate() > 5) {
                       properties.forEach(p => {
                         const status = getEffectiveStatus(p);
                         if (!isOccupiedStatus(status) || status === 'owner-occupied') return;
-                        const hasPaid = rentPayments.some(r =>
-                          String(r.propertyId) === String(p.id) && r.status === 'paid' &&
-                          (r.month || r.datePaid || '').startsWith(currentMonth)
-                        );
-                        if (!hasPaid && (parseFloat(p.monthlyRent) || 0) > 0) {
-                          actionItems.push({ priority: 2, icon: '💸', category: 'Past Due Rent', color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/20',
-                            groupKey: `Rent not received — ${new Date(today.getFullYear(), today.getMonth()).toLocaleDateString('en-US', { month: 'long' })}`,
-                            text: `${p.emoji || '🏠'} ${p.name} — rent not received for ${new Date(today.getFullYear(), today.getMonth()).toLocaleDateString('en-US', { month: 'long' })}`,
-                            action: () => { setActiveSection('income'); } });
-                        }
+                        const hasPaid = rentPayments.some(r => String(r.propertyId) === String(p.id) && r.status === 'paid' && (r.month || r.datePaid || '').startsWith(currentMonth));
+                        if (!hasPaid && (parseFloat(p.monthlyRent) || 0) > 0) count++;
                       });
                     }
-
-                    // Missing expense reports — check if last month has any expenses imported
-                    const lastMonthExpenses = expenses.filter(e => (e.date || '').startsWith(lastMonth) && e.source === 'owner-packet');
-                    if (lastMonthExpenses.length === 0 && today.getDate() > 10) {
-                      actionItems.push({ priority: 4, icon: '📊', category: 'Reports', color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/20',
-                        text: `No management reports imported for ${new Date(parseInt(lastMonth.split('-')[0]), parseInt(lastMonth.split('-')[1]) - 1).toLocaleDateString('en-US', { month: 'long' })}`,
-                        action: () => { setActiveSection('expenses'); } });
+                    // Missing reports
+                    if (today.getDate() > 10) {
+                      const getManager = (color) => { if (!color) return 'Absolute'; if (color.includes('purple') || color.includes('violet') || color.includes('indigo')) return 'Barnett & Hill'; if (color.includes('rose') || color.includes('pink')) return 'Dianne Dulin'; return 'Absolute'; };
+                      ['Absolute', 'Barnett & Hill'].forEach(mgr => {
+                        const mgrProps = properties.filter(p => getManager(p.color || '') === mgr);
+                        if (mgrProps.length === 0) return;
+                        const hasReport = expenses.some(e => (e.date || '').startsWith(lastMonth) && e.source === 'owner-packet' && mgrProps.some(mp => String(mp.id) === String(e.propertyId)));
+                        if (!hasReport) count++;
+                      });
                     }
-
-                    // Dianne Dulin managed properties — check for missing items owner needs to complete
-                    properties.filter(p => {
-                      const color = p.color || '';
-                      return color.includes('rose') || color.includes('pink');
-                    }).forEach(p => {
-                      const tenants = getPropertyTenants(p);
-                      const status = getEffectiveStatus(p);
-                      // No tenants assigned but property is supposed to be occupied
-                      if (tenants.length === 0 && !['vacant', 'renovation', 'listed'].includes(status)) {
-                        actionItems.push({ priority: 6, icon: '👩', category: 'Dianne Dulin', color: 'text-pink-400', bg: 'bg-pink-500/10 border-pink-500/20',
-                          groupKey: 'Dianne — no tenant info', text: `${p.emoji || '🏠'} ${p.name} — no tenant info from Dianne`, action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
-                      }
-                      // No rent payments this year
+                    // Dianne Dulin items
+                    properties.filter(p => { const c = p.color || ''; return c.includes('rose') || c.includes('pink'); }).forEach(p => {
+                      const tenants = getPropertyTenants(p); const status = getEffectiveStatus(p);
+                      if (tenants.length === 0 && !['vacant', 'renovation', 'listed'].includes(status)) count++;
                       const hasAnyRent = rentPayments.some(r => String(r.propertyId) === String(p.id) && r.status === 'paid' && (r.month || r.datePaid || '').startsWith(currentYearStr));
-                      if (!hasAnyRent && isOccupiedStatus(status) && status !== 'owner-occupied') {
-                        actionItems.push({ priority: 5, icon: '👩', category: 'Dianne Dulin', color: 'text-pink-400', bg: 'bg-pink-500/10 border-pink-500/20',
-                          groupKey: 'Dianne — no rent payments', text: `${p.emoji || '🏠'} ${p.name} — no rent payments recorded this year`, action: () => { setActiveSection('income'); } });
-                      }
+                      if (!hasAnyRent && isOccupiedStatus(status) && status !== 'owner-occupied') count++;
+                    });
+                    // Missing property tax & insurance
+                    properties.forEach(p => {
+                      if (!(parseFloat(p.propertyTaxAnnual) > 0)) count++;
+                      if (!(parseFloat(p.insuranceAnnual) > 0)) count++;
                     });
 
-                    // Sort by priority
-                    actionItems.sort((a, b) => a.priority - b.priority);
-
-                    if (actionItems.length === 0) return null;
-
-                    // Separate individual items from groupable items (those with groupKey)
-                    const urgentItems = actionItems.filter(i => !i.groupKey);
-                    const infoItems = actionItems.filter(i => i.groupKey);
-
-                    // Group info items by their subcategory for compact display
-                    const infoGroups = {};
-                    infoItems.forEach(item => {
-                      const key = item.groupKey || item.category;
-                      if (!infoGroups[key]) infoGroups[key] = { ...item, items: [] };
-                      infoGroups[key].items.push(item);
-                    });
-
+                    if (count === 0) return null;
                     return (
-                      <div className="bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden mb-6">
-                        <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
-                          <h3 className="text-sm font-semibold text-white/70 flex items-center gap-2">
-                            ⚡ Action Items
-                            <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-bold">{actionItems.length}</span>
-                          </h3>
-                        </div>
-                        <div className="divide-y divide-white/[0.03]">
-                          {/* Urgent/individual items */}
-                          {urgentItems.map((item, i) => (
-                            <button
-                              key={`u-${i}`}
-                              onClick={item.action}
-                              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.03] transition text-left"
-                            >
-                              <span className="text-sm flex-shrink-0">{item.icon}</span>
-                              <span className="text-xs text-white/70 flex-1 min-w-0">{item.text}</span>
-                              <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border ${item.bg} ${item.color} flex-shrink-0 uppercase`}>{item.category}</span>
-                            </button>
-                          ))}
-                          {/* Grouped info items — collapsed summary rows */}
-                          {Object.entries(infoGroups).map(([key, group]) => {
-                            const isExpanded = expandedMonths[`action-${key}`];
-                            return (
-                              <div key={key}>
-                                <button
-                                  onClick={() => setExpandedMonths(prev => ({ ...prev, [`action-${key}`]: !prev[`action-${key}`] }))}
-                                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.03] transition text-left"
-                                >
-                                  <ChevronDown className={`w-3 h-3 text-white/30 transition-transform flex-shrink-0 ${isExpanded ? '' : '-rotate-90'}`} />
-                                  <span className="text-xs text-white/50 flex-1">{group.items.length} properties — {key.toLowerCase()}</span>
-                                  <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border ${group.bg} ${group.color} flex-shrink-0 uppercase`}>{group.category}</span>
-                                </button>
-                                {isExpanded && (
-                                  <div className="bg-white/[0.01]">
-                                    {group.items.map((item, j) => (
-                                      <button
-                                        key={j}
-                                        onClick={item.action}
-                                        className="w-full flex items-center gap-3 px-4 py-1.5 pl-10 hover:bg-white/[0.03] transition text-left"
-                                      >
-                                        <span className="text-xs flex-shrink-0">{item.icon}</span>
-                                        <span className="text-[11px] text-white/50 flex-1 min-w-0">{item.text}</span>
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
+                      <button
+                        onClick={() => setActiveSection('actions')}
+                        className="w-full bg-amber-500/10 border border-amber-500/20 rounded-2xl px-4 py-3 flex items-center justify-between hover:bg-amber-500/15 transition mb-6"
+                      >
+                        <span className="text-sm text-amber-400 font-medium flex items-center gap-2">
+                          ⚡ Action Items
+                          <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-bold">{count}</span>
+                        </span>
+                        <ChevronRight className="w-4 h-4 text-amber-400/60" />
+                      </button>
                     );
                   })()}
                 </div>
@@ -1951,6 +1836,178 @@ export default function DulinProperties() {
                   )}
                 </div>
               )}
+
+              {/* ========== ACTION ITEMS SECTION ========== */}
+              {activeSection === 'actions' && (() => {
+                const actionItems = [];
+                const today = new Date(); today.setHours(0, 0, 0, 0);
+                const currentYearStr = String(today.getFullYear());
+                const currentMonth = `${currentYearStr}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+                const lastMonth = today.getMonth() === 0
+                  ? `${today.getFullYear() - 1}-12`
+                  : `${currentYearStr}-${String(today.getMonth()).padStart(2, '0')}`;
+
+                const getManager = (color) => {
+                  if (!color) return 'Absolute';
+                  if (color.includes('purple') || color.includes('violet') || color.includes('indigo')) return 'Barnett & Hill';
+                  if (color.includes('rose') || color.includes('pink')) return 'Dianne Dulin';
+                  return 'Absolute';
+                };
+
+                // --- Vacant ---
+                const vacantItems = [];
+                vacantProperties.forEach(p => {
+                  vacantItems.push({ icon: '🔴', text: `${p.emoji || '🏠'} ${p.name} is vacant`,
+                    actionLabel: 'View', action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
+                });
+
+                // --- Lease Renewal ---
+                const leaseItems = [];
+                leaseExpiredProperties.forEach(p => {
+                  const tenants = getPropertyTenants(p);
+                  const earliestEnd = tenants.map(t => t.leaseEnd).filter(Boolean).sort()[0];
+                  const label = earliestEnd ? ` (expired ${new Date(earliestEnd + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })})` : '';
+                  leaseItems.push({ icon: '📋', text: `${p.emoji || '🏠'} ${p.name} — lease expired${label}`,
+                    actionLabel: 'Renew', action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
+                });
+                expiringLeases.forEach(p => {
+                  const tenants = getPropertyTenants(p);
+                  const soonestEnd = tenants.map(t => t.leaseEnd).filter(Boolean).sort()[0];
+                  const end = new Date(soonestEnd + 'T00:00:00');
+                  const days = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+                  leaseItems.push({ icon: '⏳', text: `${p.emoji || '🏠'} ${p.name} — lease expires in ${days}d`,
+                    actionLabel: 'View', action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
+                });
+                // Missing lease dates
+                properties.forEach(p => {
+                  const status = getEffectiveStatus(p);
+                  if (!['occupied', 'month-to-month'].includes(status)) return;
+                  const tenants = getPropertyTenants(p);
+                  const hasLeaseDates = tenants.some(t => t.leaseStart || t.leaseEnd);
+                  if (!hasLeaseDates) {
+                    leaseItems.push({ icon: '📝', text: `${p.emoji || '🏠'} ${p.name} — no lease dates entered`,
+                      actionLabel: 'Add Lease', action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
+                  }
+                });
+
+                // --- Past Due Rent ---
+                const rentItems = [];
+                if (today.getDate() > 5) {
+                  properties.forEach(p => {
+                    const status = getEffectiveStatus(p);
+                    if (!isOccupiedStatus(status) || status === 'owner-occupied') return;
+                    const hasPaid = rentPayments.some(r =>
+                      String(r.propertyId) === String(p.id) && r.status === 'paid' &&
+                      (r.month || r.datePaid || '').startsWith(currentMonth)
+                    );
+                    if (!hasPaid && (parseFloat(p.monthlyRent) || 0) > 0) {
+                      rentItems.push({ icon: '💸', text: `${p.emoji || '🏠'} ${p.name} — rent not received for ${new Date(today.getFullYear(), today.getMonth()).toLocaleDateString('en-US', { month: 'long' })}`,
+                        actionLabel: 'Record', action: () => { setActiveSection('rent'); } });
+                    }
+                  });
+                }
+
+                // --- Import Reports (per management company) ---
+                const reportItems = [];
+                const lastMonthLabel = new Date(parseInt(lastMonth.split('-')[0]), parseInt(lastMonth.split('-')[1]) - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                if (today.getDate() > 10) {
+                  ['Absolute', 'Barnett & Hill'].forEach(mgr => {
+                    const mgrProps = properties.filter(p => getManager(p.color || '') === mgr);
+                    if (mgrProps.length === 0) return;
+                    const hasReport = expenses.some(e => (e.date || '').startsWith(lastMonth) && e.source === 'owner-packet' && mgrProps.some(mp => String(mp.id) === String(e.propertyId)));
+                    if (!hasReport) {
+                      reportItems.push({ icon: '📊', text: `Import owner's report for ${mgr} — ${lastMonthLabel}`,
+                        actionLabel: 'Import', action: () => { setActiveSection('documents'); setDocumentViewMode('import'); } });
+                    }
+                  });
+                }
+
+                // --- Dianne Dulin ---
+                const dianneItems = [];
+                properties.filter(p => {
+                  const color = p.color || '';
+                  return color.includes('rose') || color.includes('pink');
+                }).forEach(p => {
+                  const tenants = getPropertyTenants(p);
+                  const status = getEffectiveStatus(p);
+                  if (tenants.length === 0 && !['vacant', 'renovation', 'listed'].includes(status)) {
+                    dianneItems.push({ icon: '👩', text: `${p.emoji || '🏠'} ${p.name} — no tenant info from Dianne`,
+                      actionLabel: 'Edit', action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
+                  }
+                  const hasAnyRent = rentPayments.some(r => String(r.propertyId) === String(p.id) && r.status === 'paid' && (r.month || r.datePaid || '').startsWith(currentYearStr));
+                  if (!hasAnyRent && isOccupiedStatus(status) && status !== 'owner-occupied') {
+                    dianneItems.push({ icon: '👩', text: `${p.emoji || '🏠'} ${p.name} — no rent payments recorded this year`,
+                      actionLabel: 'Record', action: () => { setActiveSection('rent'); } });
+                  }
+                });
+
+                // --- Missing Property Info ---
+                const missingInfoItems = [];
+                properties.forEach(p => {
+                  if (!(parseFloat(p.propertyTaxAnnual) > 0)) {
+                    missingInfoItems.push({ icon: '💰', text: `${p.emoji || '🏠'} ${p.name} — no property tax amount`,
+                      actionLabel: 'Edit', action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
+                  }
+                  if (!(parseFloat(p.insuranceAnnual) > 0)) {
+                    missingInfoItems.push({ icon: '🛡️', text: `${p.emoji || '🏠'} ${p.name} — no insurance amount`,
+                      actionLabel: 'Edit', action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
+                  }
+                });
+
+                // Build category cards
+                const categories = [
+                  { id: 'vacant', title: 'Vacant Properties', color: 'text-red-400', border: 'border-red-500/20', bg: 'bg-red-500/10', btnColor: 'bg-red-500/20 text-red-300 hover:bg-red-500/30', items: vacantItems },
+                  { id: 'lease', title: 'Leases', color: 'text-orange-400', border: 'border-orange-500/20', bg: 'bg-orange-500/10', btnColor: 'bg-orange-500/20 text-orange-300 hover:bg-orange-500/30', items: leaseItems },
+                  { id: 'rent', title: 'Past Due Rent', color: 'text-red-400', border: 'border-red-500/20', bg: 'bg-red-500/10', btnColor: 'bg-red-500/20 text-red-300 hover:bg-red-500/30', items: rentItems },
+                  { id: 'reports', title: 'Reports to Import', color: 'text-purple-400', border: 'border-purple-500/20', bg: 'bg-purple-500/10', btnColor: 'bg-purple-500/20 text-purple-300 hover:bg-purple-500/30', items: reportItems },
+                  { id: 'dianne', title: 'Dianne Dulin Properties', color: 'text-pink-400', border: 'border-pink-500/20', bg: 'bg-pink-500/10', btnColor: 'bg-pink-500/20 text-pink-300 hover:bg-pink-500/30', items: dianneItems },
+                  { id: 'missing', title: 'Missing Property Info', color: 'text-blue-400', border: 'border-blue-500/20', bg: 'bg-blue-500/10', btnColor: 'bg-blue-500/20 text-blue-300 hover:bg-blue-500/30', items: missingInfoItems },
+                ].filter(c => c.items.length > 0);
+
+                const totalCount = categories.reduce((sum, c) => sum + c.items.length, 0);
+
+                return (
+                  <div className="space-y-4">
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-2">
+                      <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                        ⚡ Action Items
+                        <span className="text-xs bg-amber-500/20 text-amber-400 px-2.5 py-0.5 rounded-full font-bold">{totalCount}</span>
+                      </h2>
+                    </div>
+
+                    {totalCount === 0 && (
+                      <div className="text-center py-16">
+                        <p className="text-4xl mb-3">✅</p>
+                        <p className="text-white/40">All caught up — no action items!</p>
+                      </div>
+                    )}
+
+                    {categories.map(cat => (
+                      <div key={cat.id} className={`bg-white/[0.03] border ${cat.border} rounded-2xl overflow-hidden`}>
+                        <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2">
+                          <h3 className={`text-sm font-semibold ${cat.color}`}>{cat.title}</h3>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cat.bg} ${cat.color}`}>{cat.items.length}</span>
+                        </div>
+                        <div className="divide-y divide-white/[0.03]">
+                          {cat.items.map((item, i) => (
+                            <div key={i} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02] transition">
+                              <span className="text-sm flex-shrink-0">{item.icon}</span>
+                              <span className="text-xs text-white/70 flex-1 min-w-0">{item.text}</span>
+                              <button
+                                onClick={item.action}
+                                className={`text-[11px] font-medium px-3 py-1 rounded-lg transition flex-shrink-0 ${cat.btnColor}`}
+                              >
+                                {item.actionLabel}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
 
               {/* ========== FINANCIALS SECTION ========== */}
               {activeSection === 'financials' && (
