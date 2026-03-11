@@ -339,6 +339,28 @@ const NewPropertyModal = ({ property, onSave, onClose, showToast }) => {
                   className="w-full bg-white/10 border border-white/15 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-white/30 transition"
                 />
               </div>
+              <div>
+                <label className="block text-slate-400 text-sm mb-2">Annual Insurance</label>
+                <input
+                  type="number"
+                  name="insuranceAnnual"
+                  value={formData.insuranceAnnual || ''}
+                  onChange={handleChange}
+                  placeholder="0.00"
+                  className="w-full bg-white/10 border border-white/15 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-white/30 transition"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-400 text-sm mb-2">Monthly HOA Dues</label>
+                <input
+                  type="number"
+                  name="hoaMonthly"
+                  value={formData.hoaMonthly || ''}
+                  onChange={handleChange}
+                  placeholder="0.00"
+                  className="w-full bg-white/10 border border-white/15 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-white/30 transition"
+                />
+              </div>
             </div>
           </div>
 

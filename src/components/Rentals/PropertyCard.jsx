@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MoreVertical, MapPin, DollarSign, Trash2, Edit3, Eye, FileText, Clock, Users } from 'lucide-react';
+import { MoreVertical, MapPin, DollarSign, Trash2, Edit3, Eye, FileText, Clock, Users, Calendar } from 'lucide-react';
 import { propertyStatuses } from '../../constants';
 import { getPropertyTenants } from '../../hooks/useProperties';
 
@@ -74,6 +74,8 @@ const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, documents = [
   const leaseInfo = getLeaseInfo();
 
   const propertyTaxAnnual = parseFloat(property.propertyTaxAnnual) || 0;
+  const insuranceAnnual = parseFloat(property.insuranceAnnual) || 0;
+  const hoaMonthly = parseFloat(property.hoaMonthly) || 0;
 
   const hasMortgageData = property.hasMortgage && (mortgageBalance > 0 || mortgagePayment > 0);
 
@@ -162,6 +164,34 @@ const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, documents = [
               </div>
             </div>
           </div>
+
+          {/* Lease term info */}
+          {(() => {
+            const activeTenants = tenants.filter(t => t.leaseStart || t.leaseEnd);
+            if (activeTenants.length > 0) {
+              const t = activeTenants[0];
+              const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '?';
+              return (
+                <div className="px-4 pb-1 mt-1">
+                  <div className="flex items-center gap-1.5 text-[11px] text-white/40">
+                    <Calendar className="w-3 h-3 flex-shrink-0" />
+                    <span>Lease: {fmtDate(t.leaseStart)} — {fmtDate(t.leaseEnd)}</span>
+                  </div>
+                </div>
+              );
+            }
+            if (propStatus === 'occupied' || propStatus === 'month-to-month') {
+              return (
+                <div className="px-4 pb-1 mt-1">
+                  <span className="text-[11px] text-amber-400/60 flex items-center gap-1">
+                    <Calendar className="w-3 h-3 flex-shrink-0" />
+                    No lease dates — add in property details
+                  </span>
+                </div>
+              );
+            }
+            return null;
+          })()}
 
           {/* Tenants + Rent footer */}
           <div className="px-4 pb-3 flex items-center justify-between mt-auto">
@@ -253,6 +283,16 @@ const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, documents = [
               <p className="text-[10px] text-white/30">Property Tax</p>
               <p className="text-xs text-white/70 font-medium">{propertyTaxAnnual > 0 ? `${formatCur(propertyTaxAnnual)}/yr` : '—'}</p>
             </div>
+            <div>
+              <p className="text-[10px] text-white/30">Insurance</p>
+              <p className="text-xs text-white/70 font-medium">{insuranceAnnual > 0 ? `${formatCur(insuranceAnnual)}/yr` : '—'}</p>
+            </div>
+            {(hoaMonthly > 0 || property.hasHoa) && (
+              <div>
+                <p className="text-[10px] text-white/30">HOA</p>
+                <p className="text-xs text-white/70 font-medium">{hoaMonthly > 0 ? `${formatCur(hoaMonthly)}/mo` : '—'}</p>
+              </div>
+            )}
           </div>
 
           {/* YTD Breakdown */}

@@ -1392,56 +1392,143 @@ export default function DulinProperties() {
                     );
                   })()}
 
-                  {/* Property status alerts */}
-                  {(vacantProperties.length > 0 || leaseExpiredProperties.length > 0 || expiringLeases.length > 0) && (
-                    <div className="space-y-3 mb-6">
-                      {vacantProperties.length > 0 && (
-                        <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4">
-                          <h3 className="text-sm font-semibold text-red-400 mb-2">Vacant Properties</h3>
-                          {vacantProperties.map(p => (
-                            <button key={p.id} onClick={() => { setActiveSection('rentals'); setSelectedProperty(p); }}
-                              className="block text-sm text-white/70 hover:text-white transition py-1">
-                              {p.emoji || '🏠'} {p.name}
+                  {/* Action Items — comprehensive reminders */}
+                  {(() => {
+                    const actionItems = [];
+                    const today = new Date(); today.setHours(0, 0, 0, 0);
+                    const currentYearStr = String(today.getFullYear());
+                    const currentMonth = `${currentYearStr}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+                    const lastMonth = today.getMonth() === 0
+                      ? `${today.getFullYear() - 1}-12`
+                      : `${currentYearStr}-${String(today.getMonth()).padStart(2, '0')}`;
+
+                    // Vacant properties
+                    vacantProperties.forEach(p => {
+                      actionItems.push({ priority: 1, icon: '🔴', category: 'Vacant', color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/20',
+                        text: `${p.emoji || '🏠'} ${p.name} is vacant`, action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
+                    });
+
+                    // Expired leases
+                    leaseExpiredProperties.forEach(p => {
+                      const tenants = getPropertyTenants(p);
+                      const earliestEnd = tenants.map(t => t.leaseEnd).filter(Boolean).sort()[0];
+                      const label = earliestEnd ? ` (expired ${new Date(earliestEnd + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })})` : '';
+                      actionItems.push({ priority: 2, icon: '📋', category: 'Lease Renewal', color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/20',
+                        text: `${p.emoji || '🏠'} ${p.name} — lease expired${label}`, action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
+                    });
+
+                    // Expiring leases
+                    expiringLeases.forEach(p => {
+                      const tenants = getPropertyTenants(p);
+                      const soonestEnd = tenants.map(t => t.leaseEnd).filter(Boolean).sort()[0];
+                      const end = new Date(soonestEnd + 'T00:00:00');
+                      const days = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+                      actionItems.push({ priority: 3, icon: '⏳', category: 'Lease Renewal', color: 'text-yellow-400', bg: 'bg-yellow-500/10 border-yellow-500/20',
+                        text: `${p.emoji || '🏠'} ${p.name} — lease expires in ${days}d`, action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
+                    });
+
+                    // Missing lease dates (occupied but no lease dates on any tenant)
+                    properties.forEach(p => {
+                      const status = getEffectiveStatus(p);
+                      if (!['occupied', 'month-to-month'].includes(status)) return;
+                      const tenants = getPropertyTenants(p);
+                      const hasLeaseDates = tenants.some(t => t.leaseStart || t.leaseEnd);
+                      if (!hasLeaseDates) {
+                        actionItems.push({ priority: 5, icon: '📝', category: 'Missing Info', color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20',
+                          text: `${p.emoji || '🏠'} ${p.name} — no lease dates entered`, action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
+                      }
+                    });
+
+                    // Missing property tax
+                    properties.forEach(p => {
+                      if (!(parseFloat(p.propertyTaxAnnual) > 0)) {
+                        actionItems.push({ priority: 7, icon: '💰', category: 'Missing Info', color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20',
+                          text: `${p.emoji || '🏠'} ${p.name} — no property tax amount`, action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
+                      }
+                    });
+
+                    // Missing insurance
+                    properties.forEach(p => {
+                      if (!(parseFloat(p.insuranceAnnual) > 0)) {
+                        actionItems.push({ priority: 7, icon: '🛡️', category: 'Missing Info', color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20',
+                          text: `${p.emoji || '🏠'} ${p.name} — no insurance amount`, action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
+                      }
+                    });
+
+                    // Past due rent (occupied properties with no rent paid this month after the 5th)
+                    if (today.getDate() > 5) {
+                      properties.forEach(p => {
+                        const status = getEffectiveStatus(p);
+                        if (!isOccupiedStatus(status) || status === 'owner-occupied') return;
+                        const hasPaid = rentPayments.some(r =>
+                          String(r.propertyId) === String(p.id) && r.status === 'paid' &&
+                          (r.month || r.datePaid || '').startsWith(currentMonth)
+                        );
+                        if (!hasPaid && (parseFloat(p.monthlyRent) || 0) > 0) {
+                          actionItems.push({ priority: 2, icon: '💸', category: 'Past Due Rent', color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/20',
+                            text: `${p.emoji || '🏠'} ${p.name} — rent not received for ${new Date(today.getFullYear(), today.getMonth()).toLocaleDateString('en-US', { month: 'long' })}`,
+                            action: () => { setActiveSection('income'); } });
+                        }
+                      });
+                    }
+
+                    // Missing expense reports — check if last month has any expenses imported
+                    const lastMonthExpenses = expenses.filter(e => (e.date || '').startsWith(lastMonth) && e.source === 'owner-packet');
+                    if (lastMonthExpenses.length === 0 && today.getDate() > 10) {
+                      actionItems.push({ priority: 4, icon: '📊', category: 'Reports', color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/20',
+                        text: `No management reports imported for ${new Date(parseInt(lastMonth.split('-')[0]), parseInt(lastMonth.split('-')[1]) - 1).toLocaleDateString('en-US', { month: 'long' })}`,
+                        action: () => { setActiveSection('expenses'); } });
+                    }
+
+                    // Dianne Dulin managed properties — check for missing items owner needs to complete
+                    properties.filter(p => {
+                      const color = p.color || '';
+                      return color.includes('rose') || color.includes('pink');
+                    }).forEach(p => {
+                      const tenants = getPropertyTenants(p);
+                      const status = getEffectiveStatus(p);
+                      // No tenants assigned but property is supposed to be occupied
+                      if (tenants.length === 0 && !['vacant', 'renovation', 'listed'].includes(status)) {
+                        actionItems.push({ priority: 6, icon: '👩', category: 'Dianne Dulin', color: 'text-pink-400', bg: 'bg-pink-500/10 border-pink-500/20',
+                          text: `${p.emoji || '🏠'} ${p.name} — no tenant info from Dianne`, action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
+                      }
+                      // No rent payments this year
+                      const hasAnyRent = rentPayments.some(r => String(r.propertyId) === String(p.id) && r.status === 'paid' && (r.month || r.datePaid || '').startsWith(currentYearStr));
+                      if (!hasAnyRent && isOccupiedStatus(status) && status !== 'owner-occupied') {
+                        actionItems.push({ priority: 5, icon: '👩', category: 'Dianne Dulin', color: 'text-pink-400', bg: 'bg-pink-500/10 border-pink-500/20',
+                          text: `${p.emoji || '🏠'} ${p.name} — no rent payments recorded this year`, action: () => { setActiveSection('income'); } });
+                      }
+                    });
+
+                    // Sort by priority
+                    actionItems.sort((a, b) => a.priority - b.priority);
+
+                    if (actionItems.length === 0) return null;
+
+                    return (
+                      <div className="bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden mb-6">
+                        <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+                          <h3 className="text-sm font-semibold text-white/70 flex items-center gap-2">
+                            ⚡ Action Items
+                            <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-bold">{actionItems.length}</span>
+                          </h3>
+                        </div>
+                        <div className="divide-y divide-white/[0.03]">
+                          {actionItems.map((item, i) => (
+                            <button
+                              key={i}
+                              onClick={item.action}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.03] transition text-left"
+                            >
+                              <span className="text-sm flex-shrink-0">{item.icon}</span>
+                              <span className="text-xs text-white/70 flex-1 min-w-0">{item.text}</span>
+                              <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border ${item.bg} ${item.color} flex-shrink-0 uppercase`}>{item.category}</span>
                             </button>
                           ))}
                         </div>
-                      )}
-                      {leaseExpiredProperties.length > 0 && (
-                        <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl p-4">
-                          <h3 className="text-sm font-semibold text-orange-400 mb-2">Lease Expired</h3>
-                          {leaseExpiredProperties.map(p => {
-                            const tenants = getPropertyTenants(p);
-                            const earliestEnd = tenants.map(t => t.leaseEnd).filter(Boolean).sort()[0];
-                            const endLabel = earliestEnd ? ` — ${new Date(earliestEnd + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}` : '';
-                            return (
-                              <button key={p.id} onClick={() => { setActiveSection('rentals'); setSelectedProperty(p); }}
-                                className="block text-sm text-white/70 hover:text-white transition py-1">
-                                {p.emoji || '🏠'} {p.name}<span className="text-orange-400/70">{endLabel}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                      {expiringLeases.length > 0 && (
-                        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-2xl p-4">
-                          <h3 className="text-sm font-semibold text-yellow-400 mb-2">Leases Expiring Soon</h3>
-                          {expiringLeases.map(p => {
-                            const tenants = getPropertyTenants(p);
-                            const soonestEnd = tenants.map(t => t.leaseEnd).filter(Boolean).sort()[0];
-                            const end = soonestEnd ? new Date(soonestEnd + 'T00:00:00') : new Date();
-                            const today = new Date(); today.setHours(0,0,0,0);
-                            const days = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
-                            return (
-                              <button key={p.id} onClick={() => { setActiveSection('rentals'); setSelectedProperty(p); }}
-                                className="block text-sm text-white/70 hover:text-white transition py-1">
-                                {p.emoji || '🏠'} {p.name} <span className="text-yellow-400/70">— {days}d left</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
