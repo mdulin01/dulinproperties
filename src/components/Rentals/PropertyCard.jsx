@@ -2,7 +2,11 @@ import React, { useState } from 'react';
 import { MoreVertical, MapPin, DollarSign, Trash2, Edit3, Eye, FileText, Clock, Users } from 'lucide-react';
 import { propertyStatuses } from '../../constants';
 import { getPropertyTenants } from '../../hooks/useProperties';
-import { formatCurrency } from '../../utils';
+
+const formatCur = (n) => {
+  const num = parseFloat(n) || 0;
+  return num.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 });
+};
 
 const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, documents = [], onViewDocument, expenses = [], rentPayments = [] }) => {
   const [showMenu, setShowMenu] = useState(false);
@@ -68,6 +72,8 @@ const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, documents = [
     return { days, name: soonest.name };
   };
   const leaseInfo = getLeaseInfo();
+
+  const propertyTaxAnnual = parseFloat(property.propertyTaxAnnual) || 0;
 
   const hasMortgageData = property.hasMortgage && (mortgageBalance > 0 || mortgagePayment > 0);
 
@@ -178,7 +184,7 @@ const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, documents = [
           <div className="flex items-center justify-between mb-3">
             <span className="text-white/40 text-[10px] uppercase tracking-wider font-semibold">Cash Flow</span>
             <span className={`text-lg font-bold ${monthlyCashFlow >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              {monthlyCashFlow >= 0 ? '+' : ''}{formatCurrency(monthlyCashFlow)}
+              {monthlyCashFlow >= 0 ? '+' : ''}{formatCur(monthlyCashFlow)}
             </span>
           </div>
 
@@ -186,24 +192,24 @@ const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, documents = [
           <div className="space-y-1 mb-2">
             <div className="flex items-center justify-between text-xs">
               <span className="text-white/50">Rent</span>
-              <span className="text-emerald-400 font-medium">{formatCurrency(monthlyRent)}</span>
+              <span className="text-emerald-400 font-medium">{formatCur(monthlyRent)}</span>
             </div>
             {hasMortgageData && (
               <div className="flex items-center justify-between text-xs">
                 <span className="text-white/50">Mortgage</span>
-                <span className="text-red-400/70 font-medium">-{formatCurrency(mortgagePayment)}</span>
+                <span className="text-red-400/70 font-medium">-{formatCur(mortgagePayment)}</span>
               </div>
             )}
             {escrow > 0 && (
               <div className="flex items-center justify-between text-xs">
                 <span className="text-white/50">Escrow</span>
-                <span className="text-red-400/70 font-medium">-{formatCurrency(escrow)}</span>
+                <span className="text-red-400/70 font-medium">-{formatCur(escrow)}</span>
               </div>
             )}
             {avgMonthlyExpenses > 0 && (
               <div className="flex items-center justify-between text-xs">
                 <span className="text-white/50">Avg Expenses</span>
-                <span className="text-red-400/70 font-medium">-{formatCurrency(avgMonthlyExpenses)}</span>
+                <span className="text-red-400/70 font-medium">-{formatCur(avgMonthlyExpenses)}</span>
               </div>
             )}
           </div>
@@ -215,14 +221,14 @@ const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, documents = [
             {purchasePrice > 0 && (
               <div>
                 <p className="text-[10px] text-white/30">Purchase</p>
-                <p className="text-xs text-white/70 font-medium">{formatCurrency(purchasePrice)}</p>
+                <p className="text-xs text-white/70 font-medium">{formatCur(purchasePrice)}</p>
               </div>
             )}
             {currentValue > 0 && (
               <div>
                 <p className="text-[10px] text-white/30">Value</p>
                 <p className="text-xs text-white/70 font-medium">
-                  {formatCurrency(currentValue)}
+                  {formatCur(currentValue)}
                   {purchasePrice > 0 && (
                     <span className={`ml-1 text-[10px] ${equityGain >= 0 ? 'text-emerald-400/70' : 'text-red-400/70'}`}>
                       {equityGain >= 0 ? '▲' : '▼'}{Math.abs(equityPct)}%
@@ -234,7 +240,7 @@ const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, documents = [
             {hasMortgageData && mortgageBalance > 0 && (
               <div>
                 <p className="text-[10px] text-white/30">Loan Bal</p>
-                <p className="text-xs text-white/70 font-medium">{formatCurrency(mortgageBalance)}</p>
+                <p className="text-xs text-white/70 font-medium">{formatCur(mortgageBalance)}</p>
               </div>
             )}
             {hasMortgageData && mortgageAPR > 0 && (
@@ -243,22 +249,28 @@ const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, documents = [
                 <p className="text-xs text-white/70 font-medium">{mortgageAPR}%</p>
               </div>
             )}
+            {propertyTaxAnnual > 0 && (
+              <div>
+                <p className="text-[10px] text-white/30">Property Tax</p>
+                <p className="text-xs text-white/70 font-medium">{formatCur(propertyTaxAnnual)}/yr</p>
+              </div>
+            )}
           </div>
 
           {/* YTD Breakdown */}
           <div className="border-t border-white/[0.06] pt-2 mt-2 space-y-1">
             <div className="flex items-center justify-between text-xs">
               <span className="text-white/40">YTD Income</span>
-              <span className="text-emerald-400 font-medium">{formatCurrency(ytdRent)}</span>
+              <span className="text-emerald-400 font-medium">{formatCur(ytdRent)}</span>
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-white/40">YTD Expenses</span>
-              <span className="text-red-400/70 font-medium">-{formatCurrency(ytdExpenses)}</span>
+              <span className="text-red-400/70 font-medium">-{formatCur(ytdExpenses)}</span>
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-white/40">YTD Profit</span>
               <span className={`font-bold ${ytdProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {ytdProfit >= 0 ? '+' : ''}{formatCurrency(ytdProfit)}
+                {ytdProfit >= 0 ? '+' : ''}{formatCur(ytdProfit)}
               </span>
             </div>
           </div>
