@@ -249,12 +249,10 @@ const PropertyCard = ({ property, onEdit, onDelete, onViewDetails, documents = [
                 <p className="text-xs text-white/70 font-medium">{mortgageAPR}%</p>
               </div>
             )}
-            {propertyTaxAnnual > 0 && (
-              <div>
-                <p className="text-[10px] text-white/30">Property Tax</p>
-                <p className="text-xs text-white/70 font-medium">{formatCur(propertyTaxAnnual)}/yr</p>
-              </div>
-            )}
+            <div>
+              <p className="text-[10px] text-white/30">Property Tax</p>
+              <p className="text-xs text-white/70 font-medium">{propertyTaxAnnual > 0 ? `${formatCur(propertyTaxAnnual)}/yr` : '—'}</p>
+            </div>
           </div>
 
           {/* YTD Breakdown */}
