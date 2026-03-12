@@ -1428,13 +1428,15 @@ export default function DulinProperties() {
                         if (!hasPaid && (parseFloat(p.monthlyRent) || 0) > 0) count++;
                       });
                     }
-                    // Missing reports
+                    // Missing reports — check for any data (expenses or rent) for that company
                     if (today.getDate() > 10) {
                       ['Absolute', 'Barnett & Hill'].forEach(mgr => {
                         const mgrProps = properties.filter(p => getManager(p.color || '') === mgr);
                         if (mgrProps.length === 0) return;
-                        const hasReport = expenses.some(e => (e.date || '').startsWith(lastMonth) && e.source === 'owner-packet' && mgrProps.some(mp => String(mp.id) === String(e.propertyId)));
-                        if (!hasReport) count++;
+                        const mgrPropIds = mgrProps.map(mp => String(mp.id));
+                        const hasExp = expenses.some(e => (e.date || '').startsWith(lastMonth) && mgrPropIds.includes(String(e.propertyId)));
+                        const hasRnt = rentPayments.some(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(lastMonth) && mgrPropIds.includes(String(r.propertyId)));
+                        if (!hasExp && !hasRnt) count++;
                       });
                     }
                     // Dianne Dulin items
@@ -1924,8 +1926,11 @@ export default function DulinProperties() {
                   ['Absolute', 'Barnett & Hill'].forEach(mgr => {
                     const mgrProps = properties.filter(p => getManager(p.color || '') === mgr);
                     if (mgrProps.length === 0) return;
-                    const hasReport = expenses.some(e => (e.date || '').startsWith(lastMonth) && e.source === 'owner-packet' && mgrProps.some(mp => String(mp.id) === String(e.propertyId)));
-                    if (!hasReport) {
+                    const mgrPropIds = mgrProps.map(mp => String(mp.id));
+                    // Check for any data (expenses or rent) for this company's properties in last month
+                    const hasExpenses = expenses.some(e => (e.date || '').startsWith(lastMonth) && mgrPropIds.includes(String(e.propertyId)));
+                    const hasRent = rentPayments.some(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(lastMonth) && mgrPropIds.includes(String(r.propertyId)));
+                    if (!hasExpenses && !hasRent) {
                       reportItems.push({ icon: '📊', text: `Import owner's report for ${mgr} — ${lastMonthLabel}`,
                         actionLabel: 'Import', action: () => { setActiveSection('documents'); setDocumentViewMode('import'); } });
                     }
