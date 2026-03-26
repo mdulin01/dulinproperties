@@ -9,6 +9,7 @@ export const ownerEmails = [
   'jdulin07@gmail.com',
   'dulinliam@gmail.com',
   'mdulin@gmail.com',
+  'jochum.alex@gmail.com',
 ];
 
 // Display name mapping
@@ -17,6 +18,7 @@ export const ownerDisplayNames = {
   'jdulin07': 'Jeff',
   'dulinliam': 'Liam',
   'mdulin': 'Mike',
+  'jochum.alex': 'Alex',
 };
 
 // Expense report categories for uploaded management company reports
