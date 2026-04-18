@@ -680,13 +680,13 @@ export default function DocumentImport({ properties, expenses, rentPayments = []
             <div className="text-sm text-white/80 leading-relaxed">
               <p className="font-semibold text-white mb-1">How to add your monthly numbers</p>
               <ol className="list-decimal list-inside space-y-1 text-white/70">
-                <li>Find the month below that you want to add a statement for.</li>
-                <li>Click the empty square under that statement — or pick a company card lower down.</li>
-                <li>Drag the PDF onto the drop zone <em>or</em> click to choose a file.</li>
-                <li>Review the list, uncheck anything you don&rsquo;t want, then click <span className="font-semibold text-white">Import Selected</span>.</li>
+                <li>In the grid below, find the row for the month you want to add.</li>
+                <li>Click the empty <span className="bg-white/10 rounded px-1">⬜ Add</span> square under the statement you have (Barnett &amp; Hill, Absolute, FFB Bank, Citi Card, or Costco Card).</li>
+                <li>Drag the PDF onto the drop zone <em>or</em> click the zone to choose a file. (For bank and credit-card statements, paste the text using the box below the drop zone.)</li>
+                <li>Review the list of transactions, uncheck anything you don&rsquo;t want, then click <span className="font-semibold text-white">Import Selected</span>.</li>
               </ol>
               <p className="text-xs text-white/50 mt-2">
-                ✅ green = already imported &middot; ⚠️ amber = looks incomplete &middot; ⬜ empty = not yet added
+                ✅ green = already imported &middot; ⚠️ amber = looks incomplete &middot; ⬜ empty = not yet added &middot; current month is highlighted in <span className="text-amber-300">amber</span>
               </p>
             </div>
           </div>
