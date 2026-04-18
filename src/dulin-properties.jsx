@@ -52,6 +52,7 @@ import DocumentCard from './components/Documents/DocumentCard';
 import AddDocumentModal from './components/Documents/AddDocumentModal';
 import DocumentViewer from './components/Documents/DocumentViewer';
 import DocumentImport from './components/Documents/DocumentImport';
+import DocsActionItems from './components/Documents/DocsActionItems';
 
 // Financials components (kept for backward compat)
 import TransactionCard from './components/Financials/TransactionCard';
@@ -73,6 +74,7 @@ import BuildInfo from './components/BuildInfo';
 import HelpPage from './components/HelpPage';
 import HelpTip from './components/HelpTip';
 import ScheduleE from './components/ScheduleE';
+import InputDataPage from './components/InputData/InputDataPage';
 
 // Firebase imports
 import { initializeApp } from 'firebase/app';
@@ -1760,6 +1762,12 @@ export default function DulinProperties() {
               {/* ========== DOCUMENTS SECTION ========== */}
               {activeSection === 'documents' && (
                 <div>
+                  {/* Lease / tenant action items (non-financial) live here now, above the file library */}
+                  <DocsActionItems
+                    properties={properties}
+                    onOpenProperty={(p) => { setActiveSection('rentals'); setSelectedProperty(p); }}
+                  />
+
                   {/* Sub-nav — import lives under "Input Data" tab now; here we just browse saved documents */}
                   <div className="flex gap-1.5 mb-4 items-center justify-between sticky top-[57px] z-20 bg-slate-900/95 backdrop-blur-md py-3 -mx-4 px-4 flex-wrap">
                     <div className="flex gap-1.5 flex-wrap">
@@ -1896,252 +1904,21 @@ export default function DulinProperties() {
                 </div>
               )}
 
-              {/* ========== INPUT DATA SECTION (landing) — Import + Action Items ========== */}
-              {activeSection === 'input' && (() => {
-                const today = new Date(); today.setHours(0, 0, 0, 0);
-                const currentYearStr = String(today.getFullYear());
-                const currentMonth = `${currentYearStr}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-                const lastMonth = today.getMonth() === 0
-                  ? `${today.getFullYear() - 1}-12`
-                  : `${currentYearStr}-${String(today.getMonth()).padStart(2, '0')}`;
-
-                const getManager = (color) => {
-                  if (!color) return 'Absolute';
-                  if (color.includes('purple') || color.includes('violet') || color.includes('indigo')) return 'Barnett & Hill';
-                  if (color.includes('rose') || color.includes('pink')) return 'Dianne Dulin';
-                  return 'Absolute';
-                };
-                const isManaged = (p) => { const mgr = getManager(p.color || ''); return mgr === 'Absolute' || mgr === 'Barnett & Hill'; };
-
-                // --- Vacant (only Dianne properties — managed vacancies are handled by the company) ---
-                const vacantItems = [];
-                vacantProperties.forEach(p => {
-                  if (isManaged(p)) return; // management company handles filling vacancies
-                  vacantItems.push({ icon: '🔴', text: `${p.emoji || '🏠'} ${p.name} is vacant`,
-                    actionLabel: 'View', action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
-                });
-
-                // --- Lease Renewal (only Dianne — managed leases are handled by management co) ---
-                const leaseItems = [];
-                leaseExpiredProperties.forEach(p => {
-                  if (isManaged(p)) return;
-                  const tenants = getPropertyTenants(p);
-                  const earliestEnd = tenants.map(t => t.leaseEnd).filter(Boolean).sort()[0];
-                  const label = earliestEnd ? ` (expired ${new Date(earliestEnd + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })})` : '';
-                  leaseItems.push({ icon: '📋', text: `${p.emoji || '🏠'} ${p.name} — lease expired${label}`,
-                    actionLabel: 'Renew', action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
-                });
-                expiringLeases.forEach(p => {
-                  if (isManaged(p)) return;
-                  const tenants = getPropertyTenants(p);
-                  const soonestEnd = tenants.map(t => t.leaseEnd).filter(Boolean).sort()[0];
-                  const end = new Date(soonestEnd + 'T00:00:00');
-                  const days = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
-                  leaseItems.push({ icon: '⏳', text: `${p.emoji || '🏠'} ${p.name} — lease expires in ${days}d`,
-                    actionLabel: 'View', action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
-                });
-                // Missing lease dates — only Dianne properties
-                properties.forEach(p => {
-                  if (isManaged(p)) return;
-                  const status = getEffectiveStatus(p);
-                  if (!['occupied', 'month-to-month'].includes(status)) return;
-                  const tenants = getPropertyTenants(p);
-                  const hasLeaseDates = tenants.some(t => t.leaseStart || t.leaseEnd);
-                  if (!hasLeaseDates) {
-                    leaseItems.push({ icon: '📝', text: `${p.emoji || '🏠'} ${p.name} — no lease dates entered`,
-                      actionLabel: 'Add Lease', action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
-                  }
-                });
-
-                // --- Past Due Rent (only Dianne — managed rent comes via reports) ---
-                const rentItems = [];
-                if (today.getDate() > 5) {
-                  properties.forEach(p => {
-                    if (isManaged(p)) return;
-                    const status = getEffectiveStatus(p);
-                    if (!isOccupiedStatus(status) || status === 'owner-occupied') return;
-                    const hasPaid = rentPayments.some(r =>
-                      String(r.propertyId) === String(p.id) && r.status === 'paid' &&
-                      (r.month || r.datePaid || '').startsWith(currentMonth)
-                    );
-                    if (!hasPaid && (parseFloat(p.monthlyRent) || 0) > 0) {
-                      rentItems.push({ icon: '💸', text: `${p.emoji || '🏠'} ${p.name} — rent not received for ${new Date(today.getFullYear(), today.getMonth()).toLocaleDateString('en-US', { month: 'long' })}`,
-                        actionLabel: 'Record', action: () => { setActiveSection('rent'); } });
-                    }
-                  });
-                }
-
-                // --- Import Reports (per management company) ---
-                const reportItems = [];
-                const lastMonthLabel = new Date(parseInt(lastMonth.split('-')[0]), parseInt(lastMonth.split('-')[1]) - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-                if (today.getDate() > 10) {
-                  ['Absolute', 'Barnett & Hill'].forEach(mgr => {
-                    const mgrProps = properties.filter(p => getManager(p.color || '') === mgr);
-                    if (mgrProps.length === 0) return;
-                    const mgrPropIds = mgrProps.map(mp => String(mp.id));
-                    // Check for any data (expenses or rent) for this company's properties in last month
-                    const hasExpenses = expenses.some(e => (e.date || '').startsWith(lastMonth) && mgrPropIds.includes(String(e.propertyId)));
-                    const hasRent = rentPayments.some(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(lastMonth) && mgrPropIds.includes(String(r.propertyId)));
-                    if (!hasExpenses && !hasRent) {
-                      reportItems.push({ icon: '📊', text: `Import owner's report for ${mgr} — ${lastMonthLabel}`,
-                        actionLabel: 'Import', action: () => { setActiveSection('input'); } });
-                    }
-                  });
-                }
-
-                // --- Dianne Dulin ---
-                const dianneItems = [];
-                properties.filter(p => {
-                  const color = p.color || '';
-                  return color.includes('rose') || color.includes('pink');
-                }).forEach(p => {
-                  const tenants = getPropertyTenants(p);
-                  const status = getEffectiveStatus(p);
-                  if (tenants.length === 0 && !['vacant', 'renovation', 'listed'].includes(status)) {
-                    dianneItems.push({ icon: '👩', text: `${p.emoji || '🏠'} ${p.name} — no tenant info from Dianne`,
-                      actionLabel: 'Edit', action: () => { setActiveSection('rentals'); setSelectedProperty(p); } });
-                  }
-                  const hasAnyRent = rentPayments.some(r => String(r.propertyId) === String(p.id) && r.status === 'paid' && (r.month || r.datePaid || '').startsWith(currentYearStr));
-                  if (!hasAnyRent && isOccupiedStatus(status) && status !== 'owner-occupied') {
-                    dianneItems.push({ icon: '👩', text: `${p.emoji || '🏠'} ${p.name} — no rent payments recorded this year`,
-                      actionLabel: 'Record', action: () => { setActiveSection('rent'); } });
-                  }
-                });
-
-                // --- Missing Property Info — grouped by property ---
-                const missingByProperty = {};
-                properties.forEach(p => {
-                  const missing = [];
-                  if (!(parseFloat(p.propertyTaxAnnual) > 0)) missing.push({ icon: '💰', label: 'Property tax' });
-                  if (!(parseFloat(p.insuranceAnnual) > 0)) missing.push({ icon: '🛡️', label: 'Insurance' });
-                  if (missing.length > 0) {
-                    missingByProperty[p.id] = { property: p, missing };
-                  }
-                });
-
-                // Build category cards
-                const categories = [
-                  { id: 'vacant', title: 'Vacant Properties', color: 'text-red-400', border: 'border-red-500/20', bg: 'bg-red-500/10', btnColor: 'bg-red-500/20 text-red-300 hover:bg-red-500/30', items: vacantItems },
-                  { id: 'lease', title: 'Leases', color: 'text-orange-400', border: 'border-orange-500/20', bg: 'bg-orange-500/10', btnColor: 'bg-orange-500/20 text-orange-300 hover:bg-orange-500/30', items: leaseItems },
-                  { id: 'rent', title: 'Past Due Rent', color: 'text-red-400', border: 'border-red-500/20', bg: 'bg-red-500/10', btnColor: 'bg-red-500/20 text-red-300 hover:bg-red-500/30', items: rentItems },
-                  { id: 'reports', title: 'Reports to Import', color: 'text-purple-400', border: 'border-purple-500/20', bg: 'bg-purple-500/10', btnColor: 'bg-purple-500/20 text-purple-300 hover:bg-purple-500/30', items: reportItems },
-                  { id: 'dianne', title: 'Dianne Dulin Properties', color: 'text-pink-400', border: 'border-pink-500/20', bg: 'bg-pink-500/10', btnColor: 'bg-pink-500/20 text-pink-300 hover:bg-pink-500/30', items: dianneItems },
-                ].filter(c => c.items.length > 0);
-
-                const missingProps = Object.values(missingByProperty);
-                const totalCount = categories.reduce((sum, c) => sum + c.items.length, 0) + missingProps.length;
-
-                const isCardOpen = (id) => expandedMonths[`action-card-${id}`] !== false; // default open
-                const toggleCard = (id) => setExpandedMonths(prev => ({ ...prev, [`action-card-${id}`]: prev[`action-card-${id}`] === false }));
-
-                return (
-                  <div className="space-y-6">
-                    {/* Page header */}
-                    <div>
-                      <h2 className="text-2xl font-bold text-white mb-1">📥 Input Data</h2>
-                      <p className="text-sm text-white/50">Add this month&rsquo;s statements, then review any action items below.</p>
-                    </div>
-
-                    {/* --- Step 1: Import from statements --- */}
-                    <section>
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-sky-500 text-white text-xs font-bold">1</span>
-                        <h3 className="text-base font-semibold text-white">Import from statements</h3>
-                      </div>
-                      <DocumentImport
-                        properties={properties}
-                        expenses={expenses}
-                        rentPayments={rentPayments}
-                        addExpense={addExpense}
-                        addRentPayment={addRentPayment}
-                        showToast={showToast}
-                      />
-                    </section>
-
-                    {/* --- Step 2: Action items --- */}
-                    <section>
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-bold">2</span>
-                        <h3 className="text-base font-semibold text-white">Things to handle</h3>
-                        {totalCount > 0 && (
-                          <span className="text-xs bg-amber-500/20 text-amber-400 px-2.5 py-0.5 rounded-full font-bold">{totalCount}</span>
-                        )}
-                      </div>
-                    </section>
-
-                    {totalCount === 0 && (
-                      <div className="text-center py-16">
-                        <p className="text-4xl mb-3">✅</p>
-                        <p className="text-white/40">All caught up — no action items!</p>
-                      </div>
-                    )}
-
-                    {categories.map(cat => (
-                      <div key={cat.id} className={`bg-white/[0.03] border ${cat.border} rounded-2xl overflow-hidden`}>
-                        <button
-                          onClick={() => toggleCard(cat.id)}
-                          className="w-full px-4 py-3 border-b border-white/5 flex items-center gap-2 hover:bg-white/[0.02] transition"
-                        >
-                          <ChevronDown className={`w-3.5 h-3.5 ${cat.color} transition-transform flex-shrink-0 ${isCardOpen(cat.id) ? '' : '-rotate-90'}`} />
-                          <h3 className={`text-sm font-semibold ${cat.color}`}>{cat.title}</h3>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cat.bg} ${cat.color}`}>{cat.items.length}</span>
-                        </button>
-                        {isCardOpen(cat.id) && (
-                          <div className="divide-y divide-white/[0.03]">
-                            {cat.items.map((item, i) => (
-                              <div key={i} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02] transition">
-                                <span className="text-sm flex-shrink-0">{item.icon}</span>
-                                <span className="text-xs text-white/70 flex-1 min-w-0">{item.text}</span>
-                                <button
-                                  onClick={item.action}
-                                  className={`text-[11px] font-medium px-3 py-1 rounded-lg transition flex-shrink-0 ${cat.btnColor}`}
-                                >
-                                  {item.actionLabel}
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-
-                    {/* Missing Property Info — grouped by property */}
-                    {missingProps.length > 0 && (
-                      <div className="bg-white/[0.03] border border-blue-500/20 rounded-2xl overflow-hidden">
-                        <button
-                          onClick={() => toggleCard('missing')}
-                          className="w-full px-4 py-3 border-b border-white/5 flex items-center gap-2 hover:bg-white/[0.02] transition"
-                        >
-                          <ChevronDown className={`w-3.5 h-3.5 text-blue-400 transition-transform flex-shrink-0 ${isCardOpen('missing') ? '' : '-rotate-90'}`} />
-                          <h3 className="text-sm font-semibold text-blue-400">Missing Property Info</h3>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400">{missingProps.length} properties</span>
-                        </button>
-                        {isCardOpen('missing') && (
-                          <div className="divide-y divide-white/[0.03]">
-                            {missingProps.map(({ property: p, missing }) => (
-                              <div key={p.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02] transition">
-                                <span className="text-sm flex-shrink-0">{p.emoji || '🏠'}</span>
-                                <div className="flex-1 min-w-0">
-                                  <span className="text-xs text-white/70 font-medium">{p.name}</span>
-                                  <span className="text-[11px] text-white/40 ml-2">
-                                    — missing {missing.map(m => m.label.toLowerCase()).join(', ')}
-                                  </span>
-                                </div>
-                                <button
-                                  onClick={() => { setActiveSection('rentals'); setSelectedProperty(p); }}
-                                  className="text-[11px] font-medium px-3 py-1 rounded-lg transition flex-shrink-0 bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
-                                >
-                                  Edit
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
+              {/* ========== INPUT DATA SECTION (landing) — 3 tabs: Import / Managed Rentals / Property Info ========== */}
+              {activeSection === 'input' && (
+                <InputDataPage
+                  properties={properties}
+                  expenses={expenses}
+                  rentPayments={rentPayments}
+                  addExpense={addExpense}
+                  addRentPayment={addRentPayment}
+                  updateProperty={updateProperty}
+                  showToast={showToast}
+                  onAddRent={(p) => setShowAddRentModal({ propertyId: p.id, propertyName: p.name ? `${p.emoji || '🏠'} ${p.name}` : '' })}
+                  onAddExpense={(p) => setShowAddExpenseModal({ propertyId: p.id, propertyName: p.name ? `${p.emoji || '🏠'} ${p.name}` : '' })}
+                  onOpenProperty={(p) => { setActiveSection('rentals'); setSelectedProperty(p); }}
+                />
+              )}
 
               {/* ========== HELP SECTION ========== */}
               {activeSection === 'help' && <HelpPage />}

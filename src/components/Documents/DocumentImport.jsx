@@ -703,10 +703,10 @@ export default function DocumentImport({ properties, expenses, rentPayments = []
           const isMonthFullyDone = (m) =>
             !m.isFuture && SOURCE_TYPES.every(src => cellState(m.ym, src).state === 'complete');
 
-          const ordered = [...MONTHS].reverse(); // newest at top
-          const future = ordered.filter(m => m.isFuture);
-          const active = ordered.filter(m => !m.isFuture && !isMonthFullyDone(m));
+          const ordered = MONTHS; // Jan at top, chronological
           const done   = ordered.filter(m => !m.isFuture && isMonthFullyDone(m));
+          const active = ordered.filter(m => !m.isFuture && !isMonthFullyDone(m));
+          const future = ordered.filter(m => m.isFuture);
 
           const renderRow = (m) => (
             <tr
@@ -802,10 +802,9 @@ export default function DocumentImport({ properties, expenses, rentPayments = []
                     </tr>
                   </thead>
                   <tbody>
-                    {future.map(renderRow)}
-                    {active.map(renderRow)}
+                    {/* Completed months appear first (earlier in the year) — collapsed by default. */}
                     {done.length > 0 && !showCompletedMonths && (
-                      <tr className="border-b border-white/[0.04] last:border-0">
+                      <tr className="border-b border-white/[0.04]">
                         <td colSpan={1 + SOURCE_TYPES.length} className="px-3 py-3 text-center">
                           <button
                             onClick={() => setShowCompletedMonths(true)}
@@ -824,7 +823,7 @@ export default function DocumentImport({ properties, expenses, rentPayments = []
                     {done.length > 0 && showCompletedMonths && (
                       <>
                         {done.map(renderRow)}
-                        <tr>
+                        <tr className="border-b border-white/[0.04]">
                           <td colSpan={1 + SOURCE_TYPES.length} className="px-3 py-2 text-center">
                             <button
                               onClick={() => setShowCompletedMonths(false)}
@@ -836,6 +835,10 @@ export default function DocumentImport({ properties, expenses, rentPayments = []
                         </tr>
                       </>
                     )}
+                    {/* Active months (incl. current month highlighted in amber) */}
+                    {active.map(renderRow)}
+                    {/* Future months — shown dimmed so the rest of the year is visible */}
+                    {future.map(renderRow)}
                   </tbody>
                 </table>
               </div>
@@ -848,41 +851,8 @@ export default function DocumentImport({ properties, expenses, rentPayments = []
           );
         })()}
 
-        <h4 className="text-sm font-semibold text-white/70 mb-2 mt-4 flex items-center gap-1.5">
-          Or pick a source to add any month
-          <HelpTip label="When to use this">
-            Use the grid above to fix a specific month. Use these cards when you just want to add a statement
-            and will tell the app which month it&rsquo;s for (or let it auto-detect from the PDF).
-          </HelpTip>
-        </h4>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {SOURCE_TYPES.map(src => {
-            const c = colorMap[src.color];
-            return (
-              <button
-                key={src.id}
-                onClick={() => {
-                  setActiveSource(src.id);
-                  setEntries([]);
-                  setFfbMonth(null);
-                  setDetectedMonth(null);
-                  setUploadedFileName('');
-                  setParseError('');
-                }}
-                className={`${c.bg} border ${c.border} rounded-2xl p-5 text-center hover:brightness-110 transition group relative`}
-              >
-                <span className="text-3xl block mb-2" aria-hidden="true">{src.icon}</span>
-                <span className={`text-sm font-semibold ${c.text} block`}>{src.label}</span>
-                <p className="text-[11px] text-white/40 mt-1">
-                  {src.canParsePdf ? 'Drop PDF or click' : 'Paste statement text'}
-                </p>
-                <span className={`absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition ${c.text}`}>
-                  <ArrowRight className="w-4 h-4" />
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        {/* (Source-picker card grid removed — use the monthly grid above; a click on any cell
+             opens the same drop-zone flow with the month pre-selected.) */}
       </div>
     );
   }
