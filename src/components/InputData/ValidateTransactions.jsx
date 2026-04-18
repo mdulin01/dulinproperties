@@ -27,7 +27,8 @@ export default function ValidateTransactions({
 }) {
   const [filterStatus, setFilterStatus] = useState('needs-review'); // needs-review | validated | all
   const [filterSource, setFilterSource] = useState('all'); // all | <source label>
-  const [expandedMonths, setExpandedMonths] = useState({});
+  // Group key is `${source}|${ym}` so Dianne can review one statement at a time.
+  const [expandedGroups, setExpandedGroups] = useState({});
   const [confirmDiscard, setConfirmDiscard] = useState(null); // {kind, id, label}
 
   // Build a combined list of imported transactions (both income and expense)
@@ -88,15 +89,25 @@ export default function ValidateTransactions({
     });
   }, [allRows, filterStatus, filterSource]);
 
-  // Group by month
-  const byMonth = useMemo(() => {
+  // Group by (source, month) so each group corresponds to exactly one statement.
+  // Source goes first to match the "review one statement at a time" workflow.
+  // Sort: SOURCES order first (B&H, Absolute, FFB, Citi, Costco, then anything else),
+  // then newest month first within a source.
+  const bySourceMonth = useMemo(() => {
     const groups = new Map();
     for (const r of filtered) {
-      const key = r.ym || 'unknown';
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(r);
+      const key = `${r.source || 'Other'}|${r.ym || 'unknown'}`;
+      if (!groups.has(key)) groups.set(key, { source: r.source || 'Other', ym: r.ym || 'unknown', rows: [] });
+      groups.get(key).rows.push(r);
     }
-    return [...groups.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
+    const sourceOrder = new Map(SOURCES.map((s, i) => [s, i]));
+    return [...groups.entries()].sort(([, a], [, b]) => {
+      const ai = sourceOrder.has(a.source) ? sourceOrder.get(a.source) : 999;
+      const bi = sourceOrder.has(b.source) ? sourceOrder.get(b.source) : 999;
+      if (ai !== bi) return ai - bi;
+      // Newest month first within the same source
+      return a.ym < b.ym ? 1 : -1;
+    });
   }, [filtered]);
 
   const monthLabel = (ym) => {
@@ -112,8 +123,8 @@ export default function ValidateTransactions({
     return { needsReview, validated, total: allRows.length };
   }, [allRows]);
 
-  const isExpanded = (ym) => expandedMonths[ym] !== false; // default open
-  const toggleMonth = (ym) => setExpandedMonths(prev => ({ ...prev, [ym]: prev[ym] === false }));
+  const isExpanded = (key) => expandedGroups[key] !== false; // default open
+  const toggleGroup = (key) => setExpandedGroups(prev => ({ ...prev, [key]: prev[key] === false }));
 
   const setValidated = (row, value) => {
     if (row.kind === 'expense') {
@@ -124,10 +135,10 @@ export default function ValidateTransactions({
     if (value && showToast) showToast('Marked validated', 'success');
   };
 
-  const validateAllInMonth = (rows) => {
+  const validateAllInGroup = (rows, groupLabel) => {
     const unvalidated = rows.filter(r => !r.validated);
     for (const row of unvalidated) setValidated(row, true);
-    if (showToast) showToast(`Validated ${unvalidated.length} entries`, 'success');
+    if (showToast) showToast(`Validated ${unvalidated.length} entries — ${groupLabel}`, 'success');
   };
 
   const discardRow = (row) => {
@@ -230,22 +241,25 @@ export default function ValidateTransactions({
         </div>
       )}
 
-      {/* Month groups */}
+      {/* Source + month groups. Each group corresponds to one statement so Dianne
+          can work through them one at a time. */}
       <div className="space-y-3">
-        {byMonth.map(([ym, rows]) => {
-          const expanded = isExpanded(ym);
+        {bySourceMonth.map(([groupKey, { source, ym, rows }]) => {
+          const expanded = isExpanded(groupKey);
           const unvalidatedCount = rows.filter(r => !r.validated).length;
           const totalAmt = rows.reduce((s, r) => s + (r.kind === 'rent' ? r.amount : -r.amount), 0);
+          const groupLabel = `${source} — ${monthLabel(ym)}`;
           return (
-            <div key={ym} className="border border-white/10 rounded-2xl overflow-hidden bg-white/[0.02]">
-              {/* Month header */}
+            <div key={groupKey} className="border border-white/10 rounded-2xl overflow-hidden bg-white/[0.02]">
+              {/* Group header (one statement = one source+month) */}
               <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.06]">
                 <button
-                  onClick={() => toggleMonth(ym)}
+                  onClick={() => toggleGroup(groupKey)}
                   className="flex items-center gap-2 flex-1 min-w-0 text-left hover:text-white transition"
                 >
                   {expanded ? <ChevronDown className="w-4 h-4 text-white/50" /> : <ChevronRight className="w-4 h-4 text-white/50" />}
-                  <h4 className="text-base font-semibold text-white">{monthLabel(ym)}</h4>
+                  <h4 className="text-base font-semibold text-white">{source}</h4>
+                  <span className="text-sm text-white/60">· {monthLabel(ym)}</span>
                   <span className="text-xs text-white/40">
                     {rows.length} {rows.length === 1 ? 'entry' : 'entries'}
                   </span>
@@ -260,9 +274,9 @@ export default function ValidateTransactions({
                 </span>
                 {unvalidatedCount > 0 && (
                   <button
-                    onClick={() => validateAllInMonth(rows)}
+                    onClick={() => validateAllInGroup(rows, groupLabel)}
                     className="inline-flex items-center gap-1 ml-3 px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-xs font-medium hover:bg-emerald-600 transition"
-                    title="Mark every unreviewed entry in this month as validated"
+                    title={`Mark every unreviewed entry in ${groupLabel} as validated`}
                   >
                     <CheckCheck className="w-3.5 h-3.5" />
                     Validate all

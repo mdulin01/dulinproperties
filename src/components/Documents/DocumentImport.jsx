@@ -1198,17 +1198,23 @@ export default function DocumentImport({
       {entries.length > 0 && (
         <>
           {/* Dedup + month-level warning. Counts existing records for the same month+source,
-              EXCLUDING records whose fingerprint matches the current review batch — otherwise
-              the banner re-fires after a successful import because the rows just written show
-              up as "existing entries for this month". */}
+              EXCLUDING records whose fingerprint matches a row in the batch that has already
+              been imported in THIS session. Those are rows we just wrote — they shouldn't
+              trigger the "this month already has entries" warning again.
+              BUT: before the user clicks Import Selected, `imported` is false on every batch
+              row. In that state we must NOT exclude matches — otherwise a user re-importing
+              the same PDF won't see the existing-entries banner (the new parse would match
+              the stored rows on fingerprint and silently hide the warning). */}
           {(() => {
             const ym = (entries.find(e => e.date)?.date || '').slice(0, 7) || detectedMonth;
-            const batchFps = new Set(entries.map(e => e.fingerprint).filter(Boolean));
+            const importedBatchFps = new Set(
+              entries.filter(e => e.imported).map(e => e.fingerprint).filter(Boolean)
+            );
             const inMonthSource = (list, dateFn) =>
               (list || []).filter(r =>
                 r.sourceDocument === source.label &&
                 dateFn(r) === ym &&
-                !(r.fingerprint && batchFps.has(r.fingerprint))
+                !(r.fingerprint && importedBatchFps.has(r.fingerprint))
               ).length;
             const existingSame =
               inMonthSource(expenses, e => (e.date || '').slice(0, 7)) +
