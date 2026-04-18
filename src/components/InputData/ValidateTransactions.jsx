@@ -1,33 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Check, Edit3, Trash2, AlertCircle, ChevronDown, ChevronRight, FileText, CheckCheck, Filter } from 'lucide-react';
+import { Check, Edit3, Trash2, AlertCircle, ChevronDown, ChevronRight, FileText, CheckCheck, Filter, Search, X } from 'lucide-react';
 import HelpTip from '../HelpTip';
 import { formatCurrency } from '../../utils';
 
 const SOURCES = ['Barnett & Hill', 'Absolute', 'FFB Bank', 'Citi Card', 'Costco Card'];
-
-/**
- * Single tab button used in the source + month filter strips. Shows a needs-review
- * badge so Dianne can see at a glance which statement still has work in it.
- */
-function TabBtn({ active, onClick, label, badge, small }) {
-  const size = small ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs';
-  const activeCls = active
-    ? 'bg-white/15 text-white border-white/20'
-    : 'bg-white/[0.03] text-white/60 border-white/10 hover:text-white/90 hover:bg-white/[0.08]';
-  return (
-    <button
-      onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-lg border font-medium transition ${size} ${activeCls}`}
-    >
-      <span>{label}</span>
-      {badge > 0 && (
-        <span className={`inline-flex items-center justify-center rounded-full text-[10px] font-bold px-1.5 ${active ? 'bg-amber-400/30 text-amber-200' : 'bg-amber-500/20 text-amber-300'}`}>
-          {badge}
-        </span>
-      )}
-    </button>
-  );
-}
 
 /**
  * ValidateTransactions — Dianne reviews every imported transaction and marks it validated,
@@ -52,6 +28,7 @@ export default function ValidateTransactions({
   const [filterStatus, setFilterStatus] = useState('needs-review'); // needs-review | validated | all
   const [filterSource, setFilterSource] = useState('all'); // 'all' | <source label>
   const [filterMonth, setFilterMonth] = useState('all');   // 'all' | 'YYYY-MM'
+  const [search, setSearch] = useState('');
   // Group key is `${source}|${ym}` so Dianne can review one statement at a time.
   const [expandedGroups, setExpandedGroups] = useState({});
   const [confirmDiscard, setConfirmDiscard] = useState(null); // {kind, id, label}
@@ -115,18 +92,7 @@ export default function ValidateTransactions({
     return [...seen].sort((a, b) => (a < b ? 1 : -1)); // newest first
   }, [allRows]);
 
-  // Apply filters
-  const filtered = useMemo(() => {
-    return allRows.filter(r => {
-      if (filterStatus === 'needs-review' && r.validated) return false;
-      if (filterStatus === 'validated' && !r.validated) return false;
-      if (filterSource !== 'all' && r.source !== filterSource) return false;
-      if (filterMonth !== 'all' && r.ym !== filterMonth) return false;
-      return true;
-    });
-  }, [allRows, filterStatus, filterSource, filterMonth]);
-
-  // Per-tab counts so the tab labels can show a needs-review badge.
+  // Per-dropdown-option counts so option labels can show "(N)" needs-review badges.
   const needsReviewBySource = useMemo(() => {
     const out = {};
     for (const r of allRows) {
@@ -139,11 +105,31 @@ export default function ValidateTransactions({
     const out = {};
     for (const r of allRows) {
       if (r.validated) continue;
-      if (filterSource !== 'all' && r.source !== filterSource) continue; // month badges honor source filter
+      if (filterSource !== 'all' && r.source !== filterSource) continue;
       out[r.ym || ''] = (out[r.ym || ''] || 0) + 1;
     }
     return out;
   }, [allRows, filterSource]);
+
+  // Apply filters. Search is a case-insensitive substring match against
+  // description, vendor, property name, category, source, or the amount.
+  const searchTerm = search.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    return allRows.filter(r => {
+      if (filterStatus === 'needs-review' && r.validated) return false;
+      if (filterStatus === 'validated' && !r.validated) return false;
+      if (filterSource !== 'all' && r.source !== filterSource) return false;
+      if (filterMonth !== 'all' && r.ym !== filterMonth) return false;
+      if (searchTerm) {
+        const hay = [
+          r.description, r.vendor, r.propertyName, r.category, r.source, r.notes,
+          String(r.amount), r.date,
+        ].filter(Boolean).join(' ').toLowerCase();
+        if (!hay.includes(searchTerm)) return false;
+      }
+      return true;
+    });
+  }, [allRows, filterStatus, filterSource, filterMonth, searchTerm]);
 
   // Group by (source, month) so each group corresponds to exactly one statement.
   // Source goes first to match the "review one statement at a time" workflow.
@@ -269,44 +255,72 @@ export default function ValidateTransactions({
         </div>
       </div>
 
-      {/* Source tabs — top level so Dianne can jump to one management company at a time. */}
-      {availableSources.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-1 border-b border-white/10 pb-0.5">
-          <TabBtn active={filterSource === 'all'} onClick={() => setFilterSource('all')} label="All sources" badge={totals.needsReview} />
-          {availableSources.map(s => (
-            <TabBtn
-              key={s}
-              active={filterSource === s}
-              onClick={() => setFilterSource(s)}
-              label={s}
-              badge={needsReviewBySource[s] || 0}
-            />
-          ))}
+      {/* Compact filter row: source + month dropdowns, search, and clear. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <label className="text-[11px] uppercase tracking-wide text-white/40 font-semibold">Source</label>
+          <select
+            value={filterSource}
+            onChange={(e) => setFilterSource(e.target.value)}
+            className="bg-white/[0.06] border border-white/15 text-white text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-white/30 min-w-[140px]"
+          >
+            <option value="all">All sources{totals.needsReview > 0 ? ` (${totals.needsReview})` : ''}</option>
+            {availableSources.map(s => (
+              <option key={s} value={s}>
+                {s}{(needsReviewBySource[s] || 0) > 0 ? ` (${needsReviewBySource[s]})` : ''}
+              </option>
+            ))}
+          </select>
         </div>
-      )}
 
-      {/* Month tabs — second level, scoped by the active source tab. */}
-      {availableMonths.length > 0 && (
-        <div className="mb-4 flex flex-wrap gap-1">
-          <TabBtn
-            small
-            active={filterMonth === 'all'}
-            onClick={() => setFilterMonth('all')}
-            label="All months"
-            badge={Object.values(needsReviewByMonth).reduce((s, n) => s + n, 0)}
-          />
-          {availableMonths.map(m => (
-            <TabBtn
-              small
-              key={m}
-              active={filterMonth === m}
-              onClick={() => setFilterMonth(m)}
-              label={monthLabel(m)}
-              badge={needsReviewByMonth[m] || 0}
-            />
-          ))}
+        <div className="flex items-center gap-1.5">
+          <label className="text-[11px] uppercase tracking-wide text-white/40 font-semibold">Month</label>
+          <select
+            value={filterMonth}
+            onChange={(e) => setFilterMonth(e.target.value)}
+            className="bg-white/[0.06] border border-white/15 text-white text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-white/30 min-w-[140px]"
+          >
+            <option value="all">
+              All months{Object.values(needsReviewByMonth).reduce((s, n) => s + n, 0) > 0
+                ? ` (${Object.values(needsReviewByMonth).reduce((s, n) => s + n, 0)})` : ''}
+            </option>
+            {availableMonths.map(m => (
+              <option key={m} value={m}>
+                {monthLabel(m)}{(needsReviewByMonth[m] || 0) > 0 ? ` (${needsReviewByMonth[m]})` : ''}
+              </option>
+            ))}
+          </select>
         </div>
-      )}
+
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/40" />
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tenant, vendor, property, amount…"
+            className="w-full bg-white/[0.06] border border-white/15 text-white text-xs rounded-lg pl-8 pr-7 py-1.5 focus:outline-none focus:border-white/30 placeholder-white/30"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80"
+              aria-label="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {(filterSource !== 'all' || filterMonth !== 'all' || search) && (
+          <button
+            onClick={() => { setFilterSource('all'); setFilterMonth('all'); setSearch(''); }}
+            className="text-xs text-white/50 hover:text-white/90 underline-offset-4 hover:underline px-2 py-1.5"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
 
       {/* Empty states */}
       {allRows.length === 0 && (

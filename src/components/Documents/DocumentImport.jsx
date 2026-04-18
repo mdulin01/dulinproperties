@@ -71,6 +71,8 @@ const colorMap = {
 function matchProperty(addressFromStatement, properties) {
   if (!addressFromStatement) return null;
 
+  // Normalize: lowercase, expand/collapse street-type words, drop punctuation,
+  // normalize unit markers ("1329-A" → "1329 a"), collapse whitespace.
   const normalize = (s) =>
     (s || '')
       .toLowerCase()
@@ -81,37 +83,75 @@ function matchProperty(addressFromStatement, properties) {
       .replace(/\bavenue\b/g, 'ave')
       .replace(/\bboulevard\b/g, 'blvd')
       .replace(/\blane\b/g, 'ln')
+      .replace(/\bcourt\b/g, 'ct')
+      .replace(/\bcircle\b/g, 'cir')
+      .replace(/\bhighway\b/g, 'hwy')
       .replace(/[.,]/g, '')
+      // Turn "1329-A" or "1329-a" into "1329 a" so a trailing unit letter is its own token.
+      .replace(/(\d+)\s*-\s*([a-z])\b/g, '$1 $2')
+      // "#220" or "# 220" → "220"
+      .replace(/#\s*/g, '')
       .replace(/\s+/g, ' ')
       .trim();
 
-  const addr = normalize(addressFromStatement);
+  // Stripped form: same as normalize but with all spaces removed. This catches
+  // "brook hollow" vs "brookhollow", "santa fe" vs "santafe", etc.
+  const stripSpaces = (s) => normalize(s).replace(/\s+/g, '');
 
-  // Direct match
+  // Common street-type tokens we can drop when comparing cores.
+  const STREET_TYPES = new Set(['st', 'rd', 'dr', 'ave', 'blvd', 'ln', 'ct', 'pl', 'way', 'cir', 'loop', 'pkwy', 'hwy', 'trl', 'trail']);
+
+  const addr = normalize(addressFromStatement);
+  const addrNoSpace = stripSpaces(addressFromStatement);
+  if (!addr) return null;
+
+  // Tier 1: exact normalized match.
   for (const p of properties) {
-    if (normalize(p.street) === addr) return p;
+    if (normalize(p.street || p.address || p.name) === addr) return p;
   }
 
-  // Fuzzy: check if the property street is contained in the address or vice versa
+  // Tier 2: space-insensitive equality.
   for (const p of properties) {
-    const ps = normalize(p.street);
+    if (stripSpaces(p.street || p.address || p.name) === addrNoSpace) return p;
+  }
+
+  // Tier 3: substring either direction (normalized).
+  for (const p of properties) {
+    const ps = normalize(p.street || p.address || p.name);
+    if (!ps) continue;
     if (addr.includes(ps) || ps.includes(addr)) return p;
   }
 
-  // Number + partial street name match (but require street name, not just number)
-  const addrParts = addr.split(' ');
-  const addrNum = addrParts[0];
-  const addrStreet = addrParts.slice(1).join(' ');
+  // Tier 4: substring either direction (space-stripped).
   for (const p of properties) {
-    const ps = normalize(p.street);
-    const psParts = ps.split(' ');
-    const psNum = psParts[0];
-    const psStreet = psParts.slice(1).join(' ');
-    if (addrNum === psNum && addrStreet && psStreet && (addrStreet.includes(psStreet.split(' ')[0]) || psStreet.includes(addrStreet.split(' ')[0]))) {
-      // Make sure we're not confusing Taos/Pueblo - require first word of street to match
-      const addrFirstWord = addrStreet.split(' ')[0];
-      const psFirstWord = psStreet.split(' ')[0];
-      if (addrFirstWord === psFirstWord) return p;
+    const ps = stripSpaces(p.street || p.address || p.name);
+    if (!ps) continue;
+    if (addrNoSpace.includes(ps) || ps.includes(addrNoSpace)) return p;
+  }
+
+  // Tier 5: same street number + same core street name (first non-type word) + same unit letter.
+  const tokenize = (s) => s.split(' ').filter(Boolean);
+  const partsOf = (s) => {
+    const toks = tokenize(s);
+    const num = toks[0] || '';
+    // unit = a single-letter token anywhere after the number (trailing unit marker).
+    const unit = toks.slice(1).find(t => /^[a-z]$/.test(t)) || '';
+    // core = first non-number, non-unit, non-street-type token.
+    const core = toks.slice(1).find(t => !STREET_TYPES.has(t) && t !== unit) || '';
+    return { num, unit, core };
+  };
+
+  const A = partsOf(addr);
+  if (A.num && A.core) {
+    for (const p of properties) {
+      const P = partsOf(normalize(p.street || p.address || p.name));
+      if (A.num !== P.num) continue;
+      if (A.core !== P.core) continue;
+      // If both sides have a unit, they must match. If only one has a unit, skip
+      // (ambiguous — refuse to guess).
+      if (A.unit && P.unit && A.unit !== P.unit) continue;
+      if ((A.unit && !P.unit) || (!A.unit && P.unit)) continue;
+      return p;
     }
   }
 
