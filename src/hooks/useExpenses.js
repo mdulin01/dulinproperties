@@ -218,6 +218,39 @@ export const useExpenses = (db, currentUser, showToast) => {
     showToast(`${expenseIds.length} expenses deleted`, 'info');
   }, [db, currentUser, showToast]);
 
+  /**
+   * Add many expenses at once with ONE Firestore write. Avoids the per-document
+   * write throttling that causes silent save failures when importing a PDF with
+   * dozens of transactions.
+   * Returns a Promise that resolves to {ok, count, error} so callers can surface
+   * save success/failure accurately.
+   */
+  const bulkAddExpenses = useCallback(async (newExpenses) => {
+    if (!Array.isArray(newExpenses) || newExpenses.length === 0) {
+      return { ok: true, count: 0 };
+    }
+    const stamped = newExpenses.map((e, i) => ({
+      ...e,
+      id: e.id || `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: e.createdAt || new Date().toISOString(),
+    }));
+    // Read latest state synchronously via functional setter, compute updated array,
+    // save ONCE, and commit state only if save succeeds (to prevent local/remote drift).
+    let snapshot = null;
+    setExpenses(prev => { snapshot = prev; return prev; });
+    // snapshot is set synchronously inside the updater
+    const updated = [...(snapshot || []), ...stamped];
+    const ok = await saveExpensesDirect(db, updated, currentUser);
+    if (ok) {
+      setExpenses(updated);
+      return { ok: true, count: stamped.length };
+    }
+    // Surface the failure so the UI can warn instead of silently pretending success
+    console.error('[expenses] bulkAddExpenses: save FAILED — not updating local state');
+    showToast(`Failed to save ${stamped.length} expenses`, 'error');
+    return { ok: false, count: 0, error: 'save-failed' };
+  }, [db, currentUser, showToast]);
+
   return {
     expenses,
     showAddExpenseModal,
@@ -225,6 +258,7 @@ export const useExpenses = (db, currentUser, showToast) => {
     updateExpense,
     deleteExpense,
     bulkDeleteExpenses,
+    bulkAddExpenses,
     setShowAddExpenseModal,
     setExpenses,
   };

@@ -206,7 +206,7 @@ export default function DulinProperties() {
   const {
     rentPayments, setRentPayments,
     showAddRentModal, setShowAddRentModal,
-    addRentPayment, updateRentPayment, deleteRentPayment, bulkDeleteRentPayments,
+    addRentPayment, updateRentPayment, deleteRentPayment, bulkDeleteRentPayments, bulkAddRentPayments,
   } = rentHook;
 
   // Pass db directly — hook saves to Firestore internally, no ref indirection
@@ -214,7 +214,7 @@ export default function DulinProperties() {
   const {
     expenses, setExpenses,
     showAddExpenseModal, setShowAddExpenseModal,
-    addExpense, updateExpense, deleteExpense, bulkDeleteExpenses,
+    addExpense, updateExpense, deleteExpense, bulkDeleteExpenses, bulkAddExpenses,
   } = expensesHook;
 
   // Property financial breakdown modal
@@ -1912,6 +1912,8 @@ export default function DulinProperties() {
                   rentPayments={rentPayments}
                   addExpense={addExpense}
                   addRentPayment={addRentPayment}
+                  bulkAddExpenses={bulkAddExpenses}
+                  bulkAddRentPayments={bulkAddRentPayments}
                   updateExpense={updateExpense}
                   deleteExpense={deleteExpense}
                   updateRentPayment={updateRentPayment}

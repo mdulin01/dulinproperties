@@ -52,6 +52,36 @@ export const useRent = (currentUser, saveRef, showToast) => {
     showToast(`${ids.length} payments deleted`, 'info');
   }, [showToast]);
 
+  /**
+   * Add many rent payments at once with ONE Firestore write. Same reasoning as
+   * bulkAddExpenses — rapid per-entry writes get throttled by Firestore's
+   * 1 write/sec/doc limit and silently fail.
+   * saveRef.current is the app's saveRentToFirestore; it should return a promise.
+   */
+  const bulkAddRentPayments = useCallback(async (newPayments) => {
+    if (!Array.isArray(newPayments) || newPayments.length === 0) {
+      return { ok: true, count: 0 };
+    }
+    const stamped = newPayments.map((p, i) => ({
+      ...p,
+      id: p.id || `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: p.createdAt || new Date().toISOString(),
+    }));
+    let snapshot = null;
+    setRentPayments(prev => { snapshot = prev; return prev; });
+    const updated = [...(snapshot || []), ...stamped];
+    try {
+      const maybe = saveRef.current ? saveRef.current(updated) : null;
+      if (maybe && typeof maybe.then === 'function') await maybe;
+      setRentPayments(updated);
+      return { ok: true, count: stamped.length };
+    } catch (err) {
+      console.error('[rent] bulkAddRentPayments: save FAILED', err);
+      showToast(`Failed to save ${stamped.length} rent payments`, 'error');
+      return { ok: false, count: 0, error: err?.message };
+    }
+  }, [showToast]);
+
   return {
     rentPayments,
     showAddRentModal,
@@ -59,6 +89,7 @@ export const useRent = (currentUser, saveRef, showToast) => {
     updateRentPayment,
     deleteRentPayment,
     bulkDeleteRentPayments,
+    bulkAddRentPayments,
     setShowAddRentModal,
     setRentPayments,
   };

@@ -474,6 +474,7 @@ function fingerprintEntry(e) {
 export default function DocumentImport({
   properties, expenses, rentPayments = [],
   addExpense, addRentPayment,
+  bulkAddExpenses, bulkAddRentPayments,
   deleteExpense, deleteRentPayment,
   showToast, onClose,
 }) {
@@ -551,21 +552,31 @@ export default function DocumentImport({
   }, []);
 
   // Import selected entries
-  const handleImport = useCallback(() => {
+  /**
+   * Import selected entries in TWO Firestore writes (one for expenses, one for rent),
+   * not one-per-entry. Rapid per-entry writes to the same document exceed Firestore's
+   * ~1-write-per-second throttle and many fail silently.
+   */
+  const handleImport = useCallback(async () => {
     const selected = entries.filter(e => e.selected);
     if (selected.length === 0) return;
-
     setImporting(true);
-    let count = 0;
 
-    selected.forEach(entry => {
-      // Compute fingerprint from the final entry payload so future imports can dedup against it.
+    const expensePayloads = [];
+    const rentPayloads = [];
+    selected.forEach((entry, i) => {
       const fp = fingerprintEntry(entry);
+      const base = {
+        id: `import-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+        propertyId: entry.propertyId || '',
+        propertyName: entry.propertyName || '',
+        sourceDocument: entry.sourceDocument,
+        fingerprint: fp,
+        validated: false,
+      };
       if (entry.flowType === 'income') {
-        addRentPayment({
-          id: `import-${Date.now()}-${count}`,
-          propertyId: entry.propertyId || '',
-          propertyName: entry.propertyName || '',
+        rentPayloads.push({
+          ...base,
           tenantName: entry.tenantName || '',
           amount: entry.amount,
           month: entry.date ? entry.date.substring(0, 7) : '',
@@ -573,36 +584,61 @@ export default function DocumentImport({
           status: 'paid',
           category: entry.incomeCategory || 'rent',
           notes: `Imported from ${entry.sourceDocument}`,
-          sourceDocument: entry.sourceDocument,
-          fingerprint: fp,
-          validated: false,
         });
       } else {
-        addExpense({
-          id: `import-${Date.now()}-${count}`,
-          propertyId: entry.propertyId || '',
-          propertyName: entry.propertyName || '',
+        expensePayloads.push({
+          ...base,
           category: entry.category || 'other',
           description: entry.description,
           amount: entry.amount,
           date: entry.date,
           vendor: entry.vendor || '',
           notes: entry.checkNumber ? `Check #${entry.checkNumber}` : (entry.notes || ''),
-          sourceDocument: entry.sourceDocument,
           checkNumber: entry.checkNumber || '',
-          fingerprint: fp,
-          validated: false,
         });
       }
-      count++;
     });
 
-    setImportedCount(count);
+    // Prefer bulk functions; fall back to per-entry for backward compat if hooks are missing them.
+    let expOk = true, rentOk = true;
+    let expCount = 0, rentCount = 0;
+    try {
+      if (bulkAddExpenses) {
+        const r = await bulkAddExpenses(expensePayloads);
+        expOk = !!r?.ok;
+        expCount = r?.count || 0;
+      } else {
+        expensePayloads.forEach(p => addExpense(p));
+        expCount = expensePayloads.length;
+      }
+      if (bulkAddRentPayments) {
+        const r = await bulkAddRentPayments(rentPayloads);
+        rentOk = !!r?.ok;
+        rentCount = r?.count || 0;
+      } else {
+        rentPayloads.forEach(p => addRentPayment(p));
+        rentCount = rentPayloads.length;
+      }
+    } catch (err) {
+      console.error('[DocumentImport] handleImport failed:', err);
+      showToast(`Import failed: ${err.message}`, 'error');
+      setImporting(false);
+      return;
+    }
+
+    const total = expCount + rentCount;
+    setImportedCount(total);
     setImporting(false);
-    showToast(`Imported ${count} entries`, 'success');
-    // Mark imported entries
-    setEntries(prev => prev.map(e => e.selected ? { ...e, imported: true, selected: false } : e));
-  }, [entries, addExpense, addRentPayment, showToast]);
+
+    if (expOk && rentOk && total > 0) {
+      showToast(`Imported ${total} ${total === 1 ? 'entry' : 'entries'} — saved successfully`, 'success');
+      setEntries(prev => prev.map(e => e.selected ? { ...e, imported: true, selected: false } : e));
+    } else if (total > 0) {
+      showToast(`Import incomplete — some entries failed to save. Check the console.`, 'error');
+    } else {
+      showToast('Nothing was saved. Please try again or contact support.', 'error');
+    }
+  }, [entries, addExpense, addRentPayment, bulkAddExpenses, bulkAddRentPayments, showToast]);
 
   // Find duplicate: return matching existing expense(s) or null
   const findDuplicate = useCallback((entry) => {
