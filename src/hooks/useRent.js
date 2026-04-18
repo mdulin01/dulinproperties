@@ -1,11 +1,16 @@
 import { useState, useCallback } from 'react';
+import { doc, runTransaction } from 'firebase/firestore';
+import { sanitizeForFirestore } from './useExpenses';
 
 /**
  * useRent Hook
  * Manages rent payment ledger data and operations
  * All CRUD uses functional state updates (prev =>) to avoid stale closure bugs.
+ *
+ * db is optional for bulk ops (runTransaction needs it); legacy single-entry
+ * writes still go through saveRef.current.
  */
-export const useRent = (currentUser, saveRef, showToast) => {
+export const useRent = (currentUser, saveRef, showToast, db = null) => {
 
   const [rentPayments, setRentPayments] = useState([]);
   const [showAddRentModal, setShowAddRentModal] = useState(null);
@@ -53,34 +58,46 @@ export const useRent = (currentUser, saveRef, showToast) => {
   }, [showToast]);
 
   /**
-   * Add many rent payments at once with ONE Firestore write. Same reasoning as
-   * bulkAddExpenses — rapid per-entry writes get throttled by Firestore's
-   * 1 write/sec/doc limit and silently fail.
-   * saveRef.current is the app's saveRentToFirestore; it should return a promise.
+   * Add many rent payments in ONE atomic Firestore write via runTransaction.
+   * Same reasoning as bulkAddExpenses — avoids React setState race AND the
+   * Firestore per-doc write throttle.
    */
   const bulkAddRentPayments = useCallback(async (newPayments) => {
     if (!Array.isArray(newPayments) || newPayments.length === 0) {
       return { ok: true, count: 0 };
+    }
+    if (!db) {
+      console.error('[rent] bulkAddRentPayments: no db instance (pass db to useRent)');
+      showToast('Database not ready. Try again in a moment.', 'error');
+      return { ok: false, count: 0, error: 'no-db' };
     }
     const stamped = newPayments.map((p, i) => ({
       ...p,
       id: p.id || `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
       createdAt: p.createdAt || new Date().toISOString(),
     }));
-    let snapshot = null;
-    setRentPayments(prev => { snapshot = prev; return prev; });
-    const updated = [...(snapshot || []), ...stamped];
+    const docRef = doc(db, 'rentalData', 'rent');
     try {
-      const maybe = saveRef.current ? saveRef.current(updated) : null;
-      if (maybe && typeof maybe.then === 'function') await maybe;
-      setRentPayments(updated);
+      const combined = await runTransaction(db, async (t) => {
+        const snap = await t.get(docRef);
+        const existing = snap.exists() ? (snap.data().payments || []) : [];
+        const next = [...existing, ...stamped];
+        t.set(docRef, {
+          payments: sanitizeForFirestore(next),
+          lastUpdated: new Date().toISOString(),
+          updatedBy: currentUser || 'unknown',
+          saveId: `${Date.now()}-bulk-${Math.random().toString(36).slice(2, 6)}`,
+        }, { merge: true });
+        return next;
+      });
+      setRentPayments(combined);
       return { ok: true, count: stamped.length };
     } catch (err) {
-      console.error('[rent] bulkAddRentPayments: save FAILED', err);
-      showToast(`Failed to save ${stamped.length} rent payments`, 'error');
-      return { ok: false, count: 0, error: err?.message };
+      console.error('[rent] bulkAddRentPayments: transaction FAILED', err);
+      showToast(`Failed to save ${stamped.length} rent payments: ${err.message || 'unknown error'}`, 'error');
+      return { ok: false, count: 0, error: err.message };
     }
-  }, [showToast]);
+  }, [db, currentUser, showToast]);
 
   return {
     rentPayments,

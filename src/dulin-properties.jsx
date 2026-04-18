@@ -202,7 +202,7 @@ export default function DulinProperties() {
     getTotalIncome, getTotalExpenses, getProfit, getMonthlyBreakdown, getPropertyBreakdown, getFilteredTransactions,
   } = financialsHook;
 
-  const rentHook = useRent(currentUser, saveRentRef, showToast);
+  const rentHook = useRent(currentUser, saveRentRef, showToast, db);
   const {
     rentPayments, setRentPayments,
     showAddRentModal, setShowAddRentModal,

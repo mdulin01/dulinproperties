@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, runTransaction } from 'firebase/firestore';
 import logger from '../logger';
 
 /**
@@ -219,36 +219,49 @@ export const useExpenses = (db, currentUser, showToast) => {
   }, [db, currentUser, showToast]);
 
   /**
-   * Add many expenses at once with ONE Firestore write. Avoids the per-document
-   * write throttling that causes silent save failures when importing a PDF with
-   * dozens of transactions.
-   * Returns a Promise that resolves to {ok, count, error} so callers can surface
-   * save success/failure accurately.
+   * Add many expenses at once with ONE Firestore write.
+   *
+   * Uses runTransaction so the existing expenses are read + merged + written
+   * atomically from Firestore's perspective. This avoids:
+   *   - Race conditions when many per-entry saves are fired rapid-fire
+   *   - React's async setState that made the earlier snapshot approach unreliable
+   *     (it was saving ONLY the new entries, losing everything already in the doc)
    */
   const bulkAddExpenses = useCallback(async (newExpenses) => {
     if (!Array.isArray(newExpenses) || newExpenses.length === 0) {
       return { ok: true, count: 0 };
+    }
+    if (!db) {
+      console.error('[expenses] bulkAddExpenses: no db instance');
+      showToast('Database not ready. Try again in a moment.', 'error');
+      return { ok: false, count: 0, error: 'no-db' };
     }
     const stamped = newExpenses.map((e, i) => ({
       ...e,
       id: e.id || `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
       createdAt: e.createdAt || new Date().toISOString(),
     }));
-    // Read latest state synchronously via functional setter, compute updated array,
-    // save ONCE, and commit state only if save succeeds (to prevent local/remote drift).
-    let snapshot = null;
-    setExpenses(prev => { snapshot = prev; return prev; });
-    // snapshot is set synchronously inside the updater
-    const updated = [...(snapshot || []), ...stamped];
-    const ok = await saveExpensesDirect(db, updated, currentUser);
-    if (ok) {
-      setExpenses(updated);
+    const docRef = doc(db, 'rentalData', 'expenses');
+    try {
+      const combined = await runTransaction(db, async (t) => {
+        const snap = await t.get(docRef);
+        const existing = snap.exists() ? (snap.data().expenses || []) : [];
+        const next = [...existing, ...stamped];
+        t.set(docRef, {
+          expenses: sanitizeForFirestore(next),
+          lastUpdated: new Date().toISOString(),
+          updatedBy: currentUser || 'unknown',
+          saveId: `${Date.now()}-bulk-${Math.random().toString(36).slice(2, 6)}`,
+        }, { merge: true });
+        return next;
+      });
+      setExpenses(combined);
       return { ok: true, count: stamped.length };
+    } catch (err) {
+      console.error('[expenses] bulkAddExpenses: transaction FAILED', err);
+      showToast(`Failed to save ${stamped.length} expenses: ${err.message || 'unknown error'}`, 'error');
+      return { ok: false, count: 0, error: err.message };
     }
-    // Surface the failure so the UI can warn instead of silently pretending success
-    console.error('[expenses] bulkAddExpenses: save FAILED — not updating local state');
-    showToast(`Failed to save ${stamped.length} expenses`, 'error');
-    return { ok: false, count: 0, error: 'save-failed' };
   }, [db, currentUser, showToast]);
 
   return {
