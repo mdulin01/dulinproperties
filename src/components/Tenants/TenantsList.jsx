@@ -1,10 +1,19 @@
-import React, { useState, useMemo } from 'react';
-import { Search, Plus, ChevronDown, ChevronUp, User, Phone, Mail, Calendar, DollarSign } from 'lucide-react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { Search, Plus, ChevronDown, ChevronUp, Phone, Mail, Edit3 } from 'lucide-react';
 import { tenantStatuses } from '../../constants';
 import { formatDate, formatCurrency, getDaysUntil } from '../../utils';
 import { getPropertyTenants } from '../../hooks/useProperties';
 
-export default function TenantsList({ properties, onEditTenant, onAddTenant, onViewProperty }) {
+/**
+ * TenantsList — table of every tenant across properties.
+ *
+ * Each of these fields is editable in place (click the cell → pick/type → blur
+ * or Enter to save): name, status, lease end, rent, security deposit, phone.
+ * Clicking the cell opens just that field; clicking the Edit icon on the far
+ * right still opens the full modal for everything else (photos, email,
+ * co-tenant details, etc).
+ */
+export default function TenantsList({ properties, onEditTenant, onAddTenant, onViewProperty, addOrUpdateTenant, showToast }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortCol, setSortCol] = useState('name');
@@ -86,11 +95,103 @@ export default function TenantsList({ properties, onEditTenant, onAddTenant, onV
 
   const getStatusBadge = (status) => {
     const s = tenantStatuses.find(ts => ts.value === status);
-    if (!s) return <span className="text-xs text-white/40">{status}</span>;
+    if (!s) return <span className="text-xs text-white/40">{status || 'No status'}</span>;
     return <span className={`text-xs font-medium ${s.color}`}>{s.label}</span>;
   };
 
-  const vacantCount = properties.filter(p => !p.tenant || p.tenant.status === 'vacant').length;
+  /**
+   * Save a single-field edit. Guards against: no API wired, identical value,
+   * or missing property. Shows a toast on error.
+   */
+  const saveField = (tenant, field, value) => {
+    if (!addOrUpdateTenant) {
+      showToast?.('Saving is not wired up in this view', 'error');
+      return;
+    }
+    const prev = tenant[field] ?? '';
+    // Normalize: treat "" and null/undefined as equal
+    if (String(prev || '') === String(value ?? '')) return;
+    const updated = {
+      ...tenant,
+      [field]: value,
+    };
+    // Strip the synthetic fields we attached in allTenants; addOrUpdateTenant
+    // only wants the raw tenant object.
+    delete updated.propertyId;
+    delete updated.propertyName;
+    delete updated.propertyEmoji;
+    delete updated.propertyRent;
+    delete updated.coTenantCount;
+    addOrUpdateTenant(tenant.propertyId, updated);
+    showToast?.(`Updated ${field === 'leaseEnd' ? 'lease end' : field}`, 'success');
+  };
+
+  // --- Inline editors ------------------------------------------------------
+
+  // A small controlled text/number/date editor. Commits on Enter or blur;
+  // Escape cancels. Renders the current value when idle and becomes an input
+  // when clicked.
+  const InlineField = ({ value, onCommit, type = 'text', placeholder, format, inputClassName = '', displayClassName = '' }) => {
+    const [editing, setEditing] = useState(false);
+    const [val, setVal] = useState(value ?? '');
+    const inputRef = useRef(null);
+
+    useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
+    useEffect(() => { setVal(value ?? ''); }, [value]);
+
+    const commit = () => {
+      setEditing(false);
+      if (String(val ?? '') !== String(value ?? '')) onCommit(val);
+    };
+
+    if (editing) {
+      return (
+        <input
+          ref={inputRef}
+          type={type}
+          value={val}
+          placeholder={placeholder}
+          onChange={e => setVal(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); commit(); }
+            if (e.key === 'Escape') { setVal(value ?? ''); setEditing(false); }
+          }}
+          onClick={e => e.stopPropagation()}
+          className={`bg-white/10 border border-teal-400/60 text-white text-sm rounded px-2 py-1 w-full focus:outline-none ${inputClassName}`}
+        />
+      );
+    }
+    const display = format ? format(value) : (value || <span className="text-white/30">—</span>);
+    return (
+      <button
+        onClick={e => { e.stopPropagation(); setEditing(true); }}
+        className={`text-left w-full px-1 py-0.5 -mx-1 -my-0.5 rounded hover:bg-white/[0.06] transition cursor-text ${displayClassName}`}
+        title="Click to edit"
+      >
+        {display}
+      </button>
+    );
+  };
+
+  const InlineStatus = ({ value, onCommit }) => {
+    const handleChange = (e) => { e.stopPropagation(); onCommit(e.target.value); };
+    return (
+      <select
+        value={value || ''}
+        onChange={handleChange}
+        onClick={e => e.stopPropagation()}
+        className="bg-white/[0.06] border border-white/15 text-xs rounded-md px-1.5 py-1 focus:outline-none focus:border-teal-400/60"
+      >
+        <option value="">No status</option>
+        {tenantStatuses.map(s => (
+          <option key={s.value} value={s.value}>{s.label}</option>
+        ))}
+      </select>
+    );
+  };
+
+  // -----------------------------------------------------------------------
 
   return (
     <div>
@@ -98,7 +199,10 @@ export default function TenantsList({ properties, onEditTenant, onAddTenant, onV
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-xl font-bold text-white">Tenants</h2>
-          <p className="text-xs text-white/40">{allTenants.length} tenants across {properties.length} properties</p>
+          <p className="text-xs text-white/40">
+            {allTenants.length} tenants across {properties.length} properties
+            {addOrUpdateTenant && <span className="ml-2 text-white/30">· click any cell to edit</span>}
+          </p>
         </div>
         <button
           onClick={onAddTenant}
@@ -182,23 +286,34 @@ export default function TenantsList({ properties, onEditTenant, onAddTenant, onV
                     Deposit <SortIcon col="deposit" />
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-white/40 uppercase tracking-wide">
-                    Contact
+                    Phone
                   </th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-white/40 uppercase tracking-wide w-10"></th>
                 </tr>
               </thead>
               <tbody>
                 {sorted.map((tenant, idx) => {
                   const daysLeft = tenant.leaseEnd ? getDaysUntil(tenant.leaseEnd) : null;
+                  const effectiveRent = tenant.coTenantCount > 1
+                    ? tenant.propertyRent / tenant.coTenantCount
+                    : (parseFloat(tenant.monthlyRent) || 0);
                   return (
                     <tr
                       key={`${tenant.propertyId}-${idx}`}
-                      className="border-b border-white/[0.05] hover:bg-white/[0.03] transition cursor-pointer"
-                      onClick={() => onEditTenant(tenant.propertyId, tenant)}
+                      className="border-b border-white/[0.05] hover:bg-white/[0.02] transition"
                     >
-                      <td className="px-4 py-3">
-                        <span className="text-sm font-medium text-white">{tenant.name}</span>
+                      {/* Tenant name — inline text */}
+                      <td className="px-4 py-2">
+                        <InlineField
+                          value={tenant.name || ''}
+                          placeholder="Tenant name"
+                          onCommit={(v) => saveField(tenant, 'name', v)}
+                          displayClassName="text-sm font-medium text-white"
+                        />
                       </td>
-                      <td className="px-4 py-3">
+
+                      {/* Property — still a link */}
+                      <td className="px-4 py-2">
                         <button
                           onClick={(e) => { e.stopPropagation(); onViewProperty(tenant.propertyId); }}
                           className="text-sm text-teal-400 hover:text-teal-300 transition"
@@ -206,56 +321,130 @@ export default function TenantsList({ properties, onEditTenant, onAddTenant, onV
                           {tenant.propertyEmoji} {tenant.propertyName}
                         </button>
                       </td>
-                      <td className="px-4 py-3">{getStatusBadge(tenant.status)}</td>
-                      <td className="px-4 py-3">
-                        {tenant.leaseEnd ? (
-                          <div>
-                            <span className="text-sm text-white/70">{formatDate(tenant.leaseEnd)}</span>
-                            {daysLeft !== null && daysLeft <= 30 && daysLeft >= 0 && (
-                              <span className="text-xs text-orange-400 ml-2">{daysLeft}d left</span>
-                            )}
-                            {daysLeft !== null && daysLeft < 0 && (
-                              <span className="text-xs text-red-400 ml-2">Expired</span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-sm text-white/30">—</span>
-                        )}
+
+                      {/* Status — inline select */}
+                      <td className="px-4 py-2">
+                        <InlineStatus
+                          value={tenant.status || ''}
+                          onCommit={(v) => saveField(tenant, 'status', v)}
+                        />
                       </td>
-                      <td className="px-4 py-3 text-right">
+
+                      {/* Lease end — inline date */}
+                      <td className="px-4 py-2">
+                        <InlineField
+                          value={tenant.leaseEnd || ''}
+                          type="date"
+                          onCommit={(v) => saveField(tenant, 'leaseEnd', v)}
+                          format={(v) => v ? (
+                            <span className="text-sm">
+                              <span className="text-white/70">{formatDate(v)}</span>
+                              {daysLeft !== null && daysLeft <= 30 && daysLeft >= 0 && (
+                                <span className="text-xs text-orange-400 ml-2">{daysLeft}d left</span>
+                              )}
+                              {daysLeft !== null && daysLeft < 0 && (
+                                <span className="text-xs text-red-400 ml-2">Expired</span>
+                              )}
+                            </span>
+                          ) : <span className="text-white/30">—</span>}
+                        />
+                      </td>
+
+                      {/* Rent — inline number. If co-tenant, we edit the per-tenant rent. */}
+                      <td className="px-4 py-2 text-right">
                         {tenant.coTenantCount > 1 ? (
                           <div>
-                            <span className="text-sm font-medium text-emerald-400">
-                              {formatCurrency(tenant.propertyRent / tenant.coTenantCount)}
-                            </span>
+                            <InlineField
+                              value={tenant.monthlyRent || ''}
+                              type="number"
+                              placeholder="0"
+                              onCommit={(v) => saveField(tenant, 'monthlyRent', v)}
+                              format={(v) => {
+                                const override = parseFloat(v) || 0;
+                                const show = override > 0 ? override : effectiveRent;
+                                return (
+                                  <span className="text-sm font-medium text-emerald-400">
+                                    {show ? formatCurrency(show) : '—'}
+                                  </span>
+                                );
+                              }}
+                              displayClassName="text-right"
+                              inputClassName="text-right"
+                            />
                             <span className="text-[10px] text-white/30 block">
                               split {tenant.coTenantCount} ways
                             </span>
                           </div>
                         ) : (
-                          <span className="text-sm font-medium text-emerald-400">
-                            {tenant.monthlyRent ? formatCurrency(tenant.monthlyRent) : '—'}
-                          </span>
+                          <InlineField
+                            value={tenant.monthlyRent || ''}
+                            type="number"
+                            placeholder="0"
+                            onCommit={(v) => saveField(tenant, 'monthlyRent', v)}
+                            format={(v) => (
+                              <span className="text-sm font-medium text-emerald-400">
+                                {v ? formatCurrency(v) : '—'}
+                              </span>
+                            )}
+                            displayClassName="text-right"
+                            inputClassName="text-right"
+                          />
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-sm text-white/60">
-                          {tenant.securityDeposit ? formatCurrency(tenant.securityDeposit) : '—'}
-                        </span>
+
+                      {/* Deposit — inline number */}
+                      <td className="px-4 py-2 text-right">
+                        <InlineField
+                          value={tenant.securityDeposit || ''}
+                          type="number"
+                          placeholder="0"
+                          onCommit={(v) => saveField(tenant, 'securityDeposit', v)}
+                          format={(v) => (
+                            <span className="text-sm text-white/70">
+                              {v ? formatCurrency(v) : '—'}
+                            </span>
+                          )}
+                          displayClassName="text-right"
+                          inputClassName="text-right"
+                        />
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-2">
-                          {tenant.email && (
-                            <a href={`mailto:${tenant.email}`} onClick={e => e.stopPropagation()} className="text-white/40 hover:text-white/70">
-                              <Mail className="w-4 h-4" />
-                            </a>
-                          )}
-                          {tenant.phone && (
-                            <a href={`tel:${tenant.phone}`} onClick={e => e.stopPropagation()} className="text-white/40 hover:text-white/70">
-                              <Phone className="w-4 h-4" />
-                            </a>
-                          )}
+
+                      {/* Phone — inline tel */}
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-2">
+                          <InlineField
+                            value={tenant.phone || ''}
+                            type="tel"
+                            placeholder="Phone"
+                            onCommit={(v) => saveField(tenant, 'phone', v)}
+                            format={(v) => v ? (
+                              <span className="text-sm text-white/70">{v}</span>
+                            ) : <span className="text-white/30 text-sm">Add…</span>}
+                          />
+                          <div className="flex gap-1.5 flex-shrink-0">
+                            {tenant.email && (
+                              <a href={`mailto:${tenant.email}`} onClick={e => e.stopPropagation()} className="text-white/40 hover:text-white/70" title={tenant.email}>
+                                <Mail className="w-4 h-4" />
+                              </a>
+                            )}
+                            {tenant.phone && (
+                              <a href={`tel:${tenant.phone}`} onClick={e => e.stopPropagation()} className="text-white/40 hover:text-white/70" title={tenant.phone}>
+                                <Phone className="w-4 h-4" />
+                              </a>
+                            )}
+                          </div>
                         </div>
+                      </td>
+
+                      {/* Full-edit modal (photo, email, co-tenants, etc.) */}
+                      <td className="px-4 py-2 text-right">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onEditTenant(tenant.propertyId, tenant); }}
+                          className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-white/[0.05] border border-white/10 text-white/40 hover:text-white/80 hover:bg-white/[0.12] transition"
+                          title="Open full editor"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   );

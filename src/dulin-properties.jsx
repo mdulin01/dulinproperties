@@ -1676,6 +1676,8 @@ export default function DulinProperties() {
                     const prop = properties.find(p => String(p.id) === String(propertyId));
                     if (prop) { setActiveSection('rentals'); setSelectedProperty(prop); }
                   }}
+                  addOrUpdateTenant={addOrUpdateTenant}
+                  showToast={showToast}
                 />
               )}
 
