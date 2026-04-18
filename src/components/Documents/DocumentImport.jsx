@@ -795,12 +795,15 @@ export default function DocumentImport({
             incomeCategory: isIncome ? 'rent' : undefined,
             imported: false,
           };
-          // Non-selected by default: owner distributions + exact fingerprint duplicates.
+          // Default selected unless this row is an exact fingerprint duplicate of
+          // one already in the DB. Owner distributions used to be pre-unchecked to
+          // avoid double-counting income; Dianne prefers to see them imported by
+          // default and can still uncheck them on review.
           const fp = fingerprintEntry(entry);
           const isDuplicate = existingFingerprints.has(fp);
           entry.fingerprint = fp;
           entry.isDuplicate = isDuplicate;
-          entry.selected = !tx.isDistribution && !isDuplicate;
+          entry.selected = !isDuplicate;
           return entry;
         });
       } else {
