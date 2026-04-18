@@ -31,6 +31,7 @@ export default function InputDataPage({
   // Modal launchers (for quick-add flows + validation edits)
   onAddRent, onAddExpense, onOpenProperty,
   onEditExpense, onEditRent,
+  onNewExpense, onNewRent,
   // UI
   showToast,
 }) {
@@ -100,6 +101,8 @@ export default function InputDataPage({
           deleteRentPayment={deleteRentPayment}
           onEditExpense={onEditExpense}
           onEditRent={onEditRent}
+          onAddExpense={onNewExpense}
+          onAddRent={onNewRent}
           showToast={showToast}
         />
       )}

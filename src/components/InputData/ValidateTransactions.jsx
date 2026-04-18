@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Check, Edit3, Trash2, AlertCircle, ChevronDown, ChevronRight, FileText, CheckCheck, Filter, Search, X } from 'lucide-react';
+import { Check, Edit3, Trash2, AlertCircle, ChevronDown, ChevronRight, FileText, CheckCheck, Filter, Search, X, Plus } from 'lucide-react';
 import HelpTip from '../HelpTip';
 import { formatCurrency } from '../../utils';
 
@@ -23,8 +23,11 @@ export default function ValidateTransactions({
   deleteRentPayment,
   onEditExpense,
   onEditRent,
+  onAddExpense,
+  onAddRent,
   showToast,
 }) {
+  const [showAddMenu, setShowAddMenu] = useState(false);
   const [filterStatus, setFilterStatus] = useState('needs-review'); // needs-review | validated | all
   const [filterSource, setFilterSource] = useState('all'); // 'all' | <source label>
   const [filterMonth, setFilterMonth] = useState('all');   // 'all' | 'YYYY-MM'
@@ -199,22 +202,68 @@ export default function ValidateTransactions({
 
   return (
     <div>
-      {/* Header + explanation */}
-      <div className="mb-4">
-        <h3 className="text-base font-semibold text-white mb-1 flex items-center gap-1.5">
-          Review and validate imported entries
-          <HelpTip label="What is this">
-            After you import a statement the entries sit here waiting for you to look them over.
-            Click <strong>✓ Validate</strong> if the line looks right, <strong>✏️ Edit</strong> to fix something,
-            or <strong>🗑️ Discard</strong> to delete an entry that shouldn&rsquo;t have been imported.
-            Validated entries still count in the dashboard and Schedule E — the checkmark just marks that
-            you&rsquo;ve personally reviewed them.
-          </HelpTip>
-        </h3>
-        <p className="text-xs text-white/50">
-          Imported entries start as &ldquo;needs review.&rdquo; Go through them one at a time, or click the
-          &ldquo;Validate all&rdquo; button in a month&rsquo;s header if you trust the whole batch.
-        </p>
+      {/* Header + explanation + manual-add control */}
+      <div className="mb-4 flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <h3 className="text-base font-semibold text-white mb-1 flex items-center gap-1.5">
+            Review and validate imported entries
+            <HelpTip label="What is this">
+              After you import a statement the entries sit here waiting for you to look them over.
+              Click <strong>✓ Validate</strong> if the line looks right, <strong>✏️ Edit</strong> to fix something,
+              or <strong>🗑️ Discard</strong> to delete an entry that shouldn&rsquo;t have been imported.
+              Validated entries still count in the dashboard and Schedule E — the checkmark just marks that
+              you&rsquo;ve personally reviewed them.
+            </HelpTip>
+          </h3>
+          <p className="text-xs text-white/50">
+            Imported entries start as &ldquo;needs review.&rdquo; Go through them one at a time, or click the
+            &ldquo;Validate all&rdquo; button in a month&rsquo;s header if you trust the whole batch.
+          </p>
+        </div>
+        {(onAddExpense || onAddRent) && (
+          <div className="relative flex-shrink-0">
+            <button
+              onClick={() => setShowAddMenu(v => !v)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/[0.06] border border-white/15 text-white hover:bg-white/[0.12] text-sm font-medium transition"
+              title="Add a transaction that wasn't in a statement"
+            >
+              <Plus className="w-4 h-4" />
+              Add transaction
+              <ChevronDown className="w-3.5 h-3.5 text-white/60" />
+            </button>
+            {showAddMenu && (
+              <>
+                <div className="fixed inset-0 z-20" onClick={() => setShowAddMenu(false)} />
+                <div className="absolute right-0 top-full mt-1 z-30 w-56 bg-slate-800 border border-white/15 rounded-xl shadow-2xl overflow-hidden">
+                  {onAddExpense && (
+                    <button
+                      onClick={() => { setShowAddMenu(false); onAddExpense(); }}
+                      className="w-full text-left px-3 py-2.5 hover:bg-white/[0.08] transition flex items-center gap-2"
+                    >
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-red-500/15 text-red-300 text-xs">−</span>
+                      <div>
+                        <div className="text-sm text-white">Add expense</div>
+                        <div className="text-[10px] text-white/40">Repair, utility, fee paid</div>
+                      </div>
+                    </button>
+                  )}
+                  {onAddRent && (
+                    <button
+                      onClick={() => { setShowAddMenu(false); onAddRent(); }}
+                      className="w-full text-left px-3 py-2.5 hover:bg-white/[0.08] transition flex items-center gap-2 border-t border-white/[0.06]"
+                    >
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-emerald-500/15 text-emerald-300 text-xs">+</span>
+                      <div>
+                        <div className="text-sm text-white">Add rent payment</div>
+                        <div className="text-[10px] text-white/40">Rent received from tenant</div>
+                      </div>
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Stats */}

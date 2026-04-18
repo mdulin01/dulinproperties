@@ -1924,6 +1924,8 @@ export default function DulinProperties() {
                   showToast={showToast}
                   onAddRent={(p) => setShowAddRentModal({ propertyId: p.id, propertyName: p.name ? `${p.emoji || '🏠'} ${p.name}` : '' })}
                   onAddExpense={(p) => setShowAddExpenseModal({ propertyId: p.id, propertyName: p.name ? `${p.emoji || '🏠'} ${p.name}` : '' })}
+                  onNewExpense={() => setShowAddExpenseModal('create')}
+                  onNewRent={() => setShowAddRentModal('create')}
                   onEditExpense={(expense) => setShowAddExpenseModal(expense)}
                   onEditRent={(payment) => setShowAddRentModal(payment)}
                   onOpenProperty={(p) => { setActiveSection('rentals'); setSelectedProperty(p); }}
