@@ -642,15 +642,40 @@ export default function DocumentImport({
     }
   }, [entries, addExpense, addRentPayment, bulkAddExpenses, bulkAddRentPayments, showToast]);
 
-  // Find duplicate: return matching existing expense(s) or null
+  // Find duplicate: return matching existing expense/rent entries or null.
+  //
+  // Cross-source fuzzy check. Fingerprint-based dedup already catches exact
+  // re-imports of the same statement (same source). This one catches the case
+  // where the same real-world transaction lives in two different statements
+  // (e.g., B&H rent row + FFB deposit row).
+  //
+  // IMPORTANT: earlier version had `desc.includes(entryDesc.substring(0,20))`,
+  // and `"anything".includes("")` is `true` in JS. So any entry with an empty
+  // or very short description matched every other row with the same date+amount.
+  // Guard against that and also require the property to match when both sides
+  // know their property.
   const findDuplicate = useCallback((entry) => {
-    const matches = expenses.filter(e =>
-      Math.abs((e.amount || 0) - entry.amount) < 0.01 &&
-      e.date === entry.date &&
-      (e.description || '').toLowerCase().includes((entry.description || '').toLowerCase().substring(0, 20))
-    );
+    const entryDesc = (entry.description || '').toLowerCase().trim();
+    const entryAmt = parseFloat(entry.amount) || 0;
+    // Need a real amount, real date, and a distinctive description substring.
+    if (!entry.date || entryAmt === 0 || entryDesc.length < 6) return null;
+    const needle = entryDesc.slice(0, 20);
+
+    const rentAsExpenseShape = (rentPayments || []).map(r => ({
+      ...r,
+      date: r.datePaid || (r.month ? `${r.month}-01` : ''),
+      description: r.description || r.category || r.tenantName || '',
+    }));
+    const candidates = [...(expenses || []), ...rentAsExpenseShape];
+
+    const matches = candidates.filter(e => {
+      if (Math.abs((parseFloat(e.amount) || 0) - entryAmt) >= 0.01) return false;
+      if (e.date !== entry.date) return false;
+      if (entry.propertyId && e.propertyId && String(e.propertyId) !== String(entry.propertyId)) return false;
+      return (e.description || '').toLowerCase().includes(needle);
+    });
     return matches.length > 0 ? matches : null;
-  }, [expenses]);
+  }, [expenses, rentPayments]);
 
   /**
    * Parse an uploaded PDF file using pdfjs-dist (via parseOwnerPacket).
