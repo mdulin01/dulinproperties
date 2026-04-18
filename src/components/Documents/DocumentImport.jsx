@@ -4,6 +4,7 @@ import HelpTip from '../HelpTip';
 import { expenseCategories, incomeCategories } from '../../constants';
 import { formatCurrency } from '../../utils';
 import { parseOwnerPacket } from '../../utils/ownerPacketParser';
+import { parseBankStatement } from '../../utils/bankStatementParser';
 
 /**
  * DocumentImport – upload/parse management company statements, bank statements, etc.
@@ -17,12 +18,17 @@ import { parseOwnerPacket } from '../../utils/ownerPacketParser';
  * pre-parsed entries before importing them to the Expenses ledger.
  */
 
+// `parserKind` selects which parser runs on an uploaded PDF:
+//   'owner-packet' → utils/ownerPacketParser (strict, column-based)
+//   'bank'         → utils/bankStatementParser (heuristic, bank statement layout)
+//   'card'         → utils/bankStatementParser (heuristic, credit-card layout:
+//                     "payment" means a credit, not a debit)
 const SOURCE_TYPES = [
-  { id: 'barnett-hill', label: 'Barnett & Hill', color: 'purple', icon: '🏢', canParsePdf: true, expectedCountPerMonth: 10 },
-  { id: 'absolute', label: 'Absolute', color: 'teal', icon: '🏠', canParsePdf: true, expectedCountPerMonth: 12 },
-  { id: 'ffb-bank', label: 'FFB Bank', color: 'blue', icon: '🏦', canParsePdf: false, expectedCountPerMonth: 8 },
-  { id: 'citi-card', label: 'Citi Card', color: 'amber', icon: '💳', canParsePdf: false, expectedCountPerMonth: 2 },
-  { id: 'costco-card', label: 'Costco Card', color: 'rose', icon: '🛒', canParsePdf: false, expectedCountPerMonth: 3 },
+  { id: 'barnett-hill', label: 'Barnett & Hill', color: 'purple', icon: '🏢', canParsePdf: true, parserKind: 'owner-packet', expectedCountPerMonth: 10 },
+  { id: 'absolute',     label: 'Absolute',       color: 'teal',   icon: '🏠', canParsePdf: true, parserKind: 'owner-packet', expectedCountPerMonth: 12 },
+  { id: 'ffb-bank',     label: 'FFB Bank',       color: 'blue',   icon: '🏦', canParsePdf: true, parserKind: 'bank',         expectedCountPerMonth: 8 },
+  { id: 'citi-card',    label: 'Citi Card',      color: 'amber',  icon: '💳', canParsePdf: true, parserKind: 'card',         expectedCountPerMonth: 2 },
+  { id: 'costco-card',  label: 'Costco Card',    color: 'rose',   icon: '🛒', canParsePdf: true, parserKind: 'card',         expectedCountPerMonth: 3 },
 ];
 
 /**
@@ -688,49 +694,92 @@ export default function DocumentImport({
       setParseError('That does not look like a PDF file. Please drop a .pdf.');
       return;
     }
+    // Find the source definition so we know which parser to use.
+    const src = SOURCE_TYPES.find(s => s.label === sourceLabel);
+    const parserKind = src?.parserKind || 'owner-packet';
+
     setParsingPdf(true);
     setParseError('');
     setUploadedFileName(file.name);
     try {
       const buf = await file.arrayBuffer();
-      const result = await parseOwnerPacket(new Uint8Array(buf));
-      if (!result.allTransactions || result.allTransactions.length === 0) {
-        setParseError('No transactions found in that PDF. Check that it is a monthly owner statement.');
-        setParsingPdf(false);
-        return;
-      }
-      // Auto-detect month
-      if (result.period?.monthStr) setDetectedMonth(result.period.monthStr);
 
-      // Map parser output to our entry shape, then fingerprint each to auto-skip duplicates.
-      const mapped = result.allTransactions.map((tx, idx) => {
-        const matched = matchProperty(tx.propertyAddress || tx.propertyFullAddress, properties);
-        const isIncome = tx.flowType === 'income' || (tx.cashIn > 0 && !tx.isDistribution);
-        const entry = {
-          id: `upload-${Date.now()}-${idx}`,
-          description: tx.description || tx.payee || tx.type || 'Unknown',
-          amount: tx.amount || tx.cashIn || tx.cashOut || 0,
-          date: tx.date || (result.period?.startDate) || '',
-          category: tx.category || (isIncome ? 'rent' : 'other'),
-          vendor: tx.payee || '',
-          tenantName: isIncome ? (tx.payee || '') : '',
-          propertyId: matched ? String(matched.id) : '',
-          propertyName: matched ? `${matched.emoji || '🏠'} ${matched.name}` : `⚠️ ${tx.propertyAddress || 'Unmatched'}`,
-          propertyHint: tx.propertyAddress || '',
-          sourceDocument: sourceLabel,
-          flowType: isIncome ? 'income' : 'expense',
-          incomeCategory: isIncome ? 'rent' : undefined,
-          imported: false,
-        };
-        // Dedup: fingerprint match = likely re-import of the same line → auto-skip.
-        const fp = fingerprintEntry(entry);
-        const isDuplicate = existingFingerprints.has(fp);
-        entry.fingerprint = fp;
-        entry.isDuplicate = isDuplicate;
-        // Default selection: skip owner distributions AND skip duplicates
-        entry.selected = !tx.isDistribution && !isDuplicate;
-        return entry;
-      });
+      let mapped = [];
+
+      if (parserKind === 'owner-packet') {
+        const result = await parseOwnerPacket(new Uint8Array(buf));
+        if (!result.allTransactions || result.allTransactions.length === 0) {
+          setParseError('No transactions found in that PDF. Check that it is a monthly owner statement.');
+          setParsingPdf(false);
+          return;
+        }
+        if (result.period?.monthStr) setDetectedMonth(result.period.monthStr);
+
+        mapped = result.allTransactions.map((tx, idx) => {
+          const matched = matchProperty(tx.propertyAddress || tx.propertyFullAddress, properties);
+          const isIncome = tx.flowType === 'income' || (tx.cashIn > 0 && !tx.isDistribution);
+          const entry = {
+            id: `upload-${Date.now()}-${idx}`,
+            description: tx.description || tx.payee || tx.type || 'Unknown',
+            amount: tx.amount || tx.cashIn || tx.cashOut || 0,
+            date: tx.date || (result.period?.startDate) || '',
+            category: tx.category || (isIncome ? 'rent' : 'other'),
+            vendor: tx.payee || '',
+            tenantName: isIncome ? (tx.payee || '') : '',
+            propertyId: matched ? String(matched.id) : '',
+            propertyName: matched ? `${matched.emoji || '🏠'} ${matched.name}` : `⚠️ ${tx.propertyAddress || 'Unmatched'}`,
+            propertyHint: tx.propertyAddress || '',
+            sourceDocument: sourceLabel,
+            flowType: isIncome ? 'income' : 'expense',
+            incomeCategory: isIncome ? 'rent' : undefined,
+            imported: false,
+          };
+          // Non-selected by default: owner distributions + exact fingerprint duplicates.
+          const fp = fingerprintEntry(entry);
+          const isDuplicate = existingFingerprints.has(fp);
+          entry.fingerprint = fp;
+          entry.isDuplicate = isDuplicate;
+          entry.selected = !tx.isDistribution && !isDuplicate;
+          return entry;
+        });
+      } else {
+        // Bank or credit-card statement (heuristic parser).
+        const result = await parseBankStatement(new Uint8Array(buf), parserKind);
+        if (!result.transactions || result.transactions.length === 0) {
+          setParseError(
+            'No transactions found in that PDF. Try the paste-text fallback below, or check that this is a full monthly statement.'
+          );
+          setParsingPdf(false);
+          return;
+        }
+        if (result.period?.monthStr) setDetectedMonth(result.period.monthStr);
+
+        mapped = result.transactions.map((tx, idx) => {
+          const isIncome = tx.flowType === 'income';
+          const entry = {
+            id: `upload-${Date.now()}-${idx}`,
+            description: tx.description || 'Unknown',
+            amount: tx.amount || 0,
+            date: tx.date || result.period?.startDate || '',
+            category: tx.category || (isIncome ? 'rent' : 'other'),
+            vendor: tx.vendor || '',
+            tenantName: '',
+            propertyId: '',
+            propertyName: '',
+            propertyHint: '',
+            sourceDocument: sourceLabel,
+            flowType: isIncome ? 'income' : 'expense',
+            incomeCategory: isIncome ? 'rent' : undefined,
+            imported: false,
+          };
+          const fp = fingerprintEntry(entry);
+          const isDuplicate = existingFingerprints.has(fp);
+          entry.fingerprint = fp;
+          entry.isDuplicate = isDuplicate;
+          entry.selected = !isDuplicate;
+          return entry;
+        });
+      }
 
       setEntries(mapped);
       setParsingPdf(false);
@@ -739,7 +788,7 @@ export default function DocumentImport({
       setParseError(`Could not read that PDF: ${err.message}`);
       setParsingPdf(false);
     }
-  }, [properties]);
+  }, [properties, existingFingerprints]);
 
   const handleFileInput = useCallback((e, sourceLabel) => {
     const file = e.target.files?.[0];
@@ -997,27 +1046,31 @@ export default function DocumentImport({
         </div>
       </div>
 
-      {/* FFB Bank month picker */}
+      {/* FFB Bank backfill presets — hand-keyed Jan/Feb 2026 data. Still useful
+          while we test the new PDF parser. For later months just drop the PDF. */}
       {activeSource === 'ffb-bank' && !ffbMonth && entries.length === 0 && (
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          {[
-            { id: 'jan26', label: 'January 2026', sub: '1/01 – 1/30', parseFn: parseFFBJan2026 },
-            { id: 'feb26', label: 'February 2026', sub: '2/02 – 2/27', parseFn: parseFFBFeb2026 },
-          ].map(m => (
-            <button
-              key={m.id}
-              onClick={() => { setFfbMonth(m.id); setEntries(m.parseFn()); }}
-              className={`${c.bg} border ${c.border} rounded-xl p-4 text-center hover:brightness-110 transition`}
-            >
-              <span className={`text-sm font-semibold ${c.text}`}>{m.label}</span>
-              <p className="text-[10px] text-white/30 mt-1">{m.sub}</p>
-            </button>
-          ))}
+        <div className="mb-4">
+          <p className="text-[11px] text-white/40 mb-2">Quick-load a backfilled month (or drop a PDF below for any other month):</p>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { id: 'jan26', label: 'January 2026', sub: '1/01 – 1/30', parseFn: parseFFBJan2026 },
+              { id: 'feb26', label: 'February 2026', sub: '2/02 – 2/27', parseFn: parseFFBFeb2026 },
+            ].map(m => (
+              <button
+                key={m.id}
+                onClick={() => { setFfbMonth(m.id); setEntries(m.parseFn()); }}
+                className={`${c.bg} border ${c.border} rounded-xl p-4 text-center hover:brightness-110 transition`}
+              >
+                <span className={`text-sm font-semibold ${c.text}`}>{m.label}</span>
+                <p className="text-[10px] text-white/30 mt-1">{m.sub}</p>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
       {/* Upload area (if no entries yet) */}
-      {entries.length === 0 && (activeSource !== 'ffb-bank' || ffbMonth) && (
+      {entries.length === 0 && (
         <div className="mb-4 space-y-3">
           {/* Month hint if we jumped here from a specific grid cell */}
           {detectedMonth && (
