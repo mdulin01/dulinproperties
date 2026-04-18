@@ -70,6 +70,9 @@ import { useLargeText } from './hooks/useLargeText';
 // Contexts
 import { SharedHubProvider } from './contexts/SharedHubContext';
 import BuildInfo from './components/BuildInfo';
+import HelpPage from './components/HelpPage';
+import HelpTip from './components/HelpTip';
+import ScheduleE from './components/ScheduleE';
 
 // Firebase imports
 import { initializeApp } from 'firebase/app';
@@ -116,7 +119,8 @@ export default function DulinProperties() {
   }, []);
 
   // ========== NAVIGATION ==========
-  const [activeSection, setActiveSection] = useState('dashboard');
+  // Landing page = Input Data. She opens the app → sees the monthly import grid + action items.
+  const [activeSection, setActiveSection] = useState('input');
   const [currentUser, setCurrentUser] = useState('Mike');
   const [isOwner, setIsOwner] = useState(false);
   const [showAddNewMenu, setShowAddNewMenu] = useState(false);
@@ -134,6 +138,9 @@ export default function DulinProperties() {
 
   // Large-text accessibility toggle (persists in localStorage)
   const [largeText, toggleLargeText] = useLargeText();
+
+  // Schedule E modal
+  const [showScheduleE, setShowScheduleE] = useState(false);
 
   // Confirm dialog
   const [confirmDialog, setConfirmDialog] = useState(null);
@@ -839,15 +846,16 @@ export default function DulinProperties() {
     showNewPropertyModal || showTenantModal || showAddDocumentModal || showAddTransactionModal ||
     showAddRentModal || showAddExpenseModal || viewingDocument || selectedProperty;
 
-  // Mobile section dropdown
+  // Mobile section dropdown — order matches desktop nav
   const allSections = [
+    { id: 'input', label: 'Input Data', emoji: '📥' },
     { id: 'dashboard', label: 'Dashboard', emoji: '📊' },
     { id: 'rentals', label: 'Properties', emoji: '🏠' },
     { id: 'tenants', label: 'Tenants', emoji: '👤' },
     { id: 'rent', label: 'Income', emoji: '💰' },
     { id: 'expenses', label: 'Expenses', emoji: '💸' },
     { id: 'documents', label: 'Documents', emoji: '📄' },
-    { id: 'actions', label: 'Action Items', emoji: '⚡' },
+    { id: 'help', label: 'Help', emoji: '❓' },
   ];
   const activeSectionInfo = allSections.find(s => s.id === activeSection) || allSections[0];
 
@@ -943,13 +951,14 @@ export default function DulinProperties() {
               {/* Desktop nav tabs */}
               <nav className="hidden md:flex items-center gap-1 ml-6">
                 {[
+                  { id: 'input', label: 'Input Data', emoji: '📥' },
                   { id: 'dashboard', label: 'Dashboard', emoji: '📊' },
                   { id: 'rentals', label: 'Properties', emoji: '🏠' },
                   { id: 'tenants', label: 'Tenants', emoji: '👤' },
                   { id: 'rent', label: 'Income', emoji: '💰' },
                   { id: 'expenses', label: 'Expenses', emoji: '💸' },
                   { id: 'documents', label: 'Documents', emoji: '📄' },
-                  { id: 'actions', label: 'Actions', emoji: '⚡' },
+                  { id: 'help', label: 'Help', emoji: '❓' },
                 ].map(tab => (
                   <button
                     key={tab.id}
@@ -1046,7 +1055,22 @@ export default function DulinProperties() {
               {/* ========== DASHBOARD SECTION ========== */}
               {activeSection === 'dashboard' && (
                 <div>
-                  <h2 className="text-xl font-bold text-white mb-4">Dashboard</h2>
+                  <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                    <h2 className="text-xl font-bold text-white">Dashboard</h2>
+                    <button
+                      onClick={() => setShowScheduleE(true)}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-sky-500 text-white rounded-xl text-sm font-medium hover:bg-sky-600 transition"
+                      title="Open a Schedule E summary you can hand to your accountant"
+                    >
+                      <span aria-hidden="true">🧾</span>
+                      <span>Schedule E (taxes)</span>
+                      <HelpTip label="About Schedule E">
+                        IRS Form 1040 Schedule E reports rental income and expenses for each property.
+                        Click the button to see this year&rsquo;s totals mapped to the form&rsquo;s line numbers,
+                        with options to download CSV or save a PDF.
+                      </HelpTip>
+                    </button>
+                  </div>
 
                   {/* YTD Financial Summary */}
                   {(() => {
@@ -1685,9 +1709,8 @@ export default function DulinProperties() {
                   properties={properties}
                   onAdd={() => setShowAddExpenseModal('create')}
                   onImportReport={() => {
-                    // Imports live under Documents > Import — jump there
-                    setActiveSection('documents');
-                    setDocumentViewMode('import');
+                    // Imports live under the "Input Data" tab now
+                    setActiveSection('input');
                   }}
                   onEdit={(expense) => setShowAddExpenseModal(expense)}
                   onDelete={(expenseId) => {
@@ -1737,11 +1760,10 @@ export default function DulinProperties() {
               {/* ========== DOCUMENTS SECTION ========== */}
               {activeSection === 'documents' && (
                 <div>
-                  {/* Sub-nav */}
+                  {/* Sub-nav — import lives under "Input Data" tab now; here we just browse saved documents */}
                   <div className="flex gap-1.5 mb-4 items-center justify-between sticky top-[57px] z-20 bg-slate-900/95 backdrop-blur-md py-3 -mx-4 px-4 flex-wrap">
                     <div className="flex gap-1.5 flex-wrap">
                       {[
-                        { id: 'import', emoji: '📥', label: 'Import' },
                         { id: 'byType', emoji: '📁', label: 'By Type' },
                         { id: 'byProperty', emoji: '🏠', label: 'By Property' },
                         { id: 'all', emoji: '📄', label: 'All' },
@@ -1870,22 +1892,12 @@ export default function DulinProperties() {
                     </div>
                   )}
 
-                  {/* Import */}
-                  {documentViewMode === 'import' && (
-                    <DocumentImport
-                      properties={properties}
-                      expenses={expenses}
-                      rentPayments={rentPayments}
-                      addExpense={addExpense}
-                      addRentPayment={addRentPayment}
-                      showToast={showToast}
-                    />
-                  )}
+                  {/* (Import moved to the "Input Data" tab — Documents here is a static library of saved files.) */}
                 </div>
               )}
 
-              {/* ========== ACTION ITEMS SECTION ========== */}
-              {activeSection === 'actions' && (() => {
+              {/* ========== INPUT DATA SECTION (landing) — Import + Action Items ========== */}
+              {activeSection === 'input' && (() => {
                 const today = new Date(); today.setHours(0, 0, 0, 0);
                 const currentYearStr = String(today.getFullYear());
                 const currentMonth = `${currentYearStr}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -1972,7 +1984,7 @@ export default function DulinProperties() {
                     const hasRent = rentPayments.some(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(lastMonth) && mgrPropIds.includes(String(r.propertyId)));
                     if (!hasExpenses && !hasRent) {
                       reportItems.push({ icon: '📊', text: `Import owner's report for ${mgr} — ${lastMonthLabel}`,
-                        actionLabel: 'Import', action: () => { setActiveSection('documents'); setDocumentViewMode('import'); } });
+                        actionLabel: 'Import', action: () => { setActiveSection('input'); } });
                     }
                   });
                 }
@@ -2023,14 +2035,39 @@ export default function DulinProperties() {
                 const toggleCard = (id) => setExpandedMonths(prev => ({ ...prev, [`action-card-${id}`]: prev[`action-card-${id}`] === false }));
 
                 return (
-                  <div className="space-y-4">
-                    {/* Header */}
-                    <div className="flex items-center justify-between mb-2">
-                      <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                        ⚡ Action Items
-                        <span className="text-xs bg-amber-500/20 text-amber-400 px-2.5 py-0.5 rounded-full font-bold">{totalCount}</span>
-                      </h2>
+                  <div className="space-y-6">
+                    {/* Page header */}
+                    <div>
+                      <h2 className="text-2xl font-bold text-white mb-1">📥 Input Data</h2>
+                      <p className="text-sm text-white/50">Add this month&rsquo;s statements, then review any action items below.</p>
                     </div>
+
+                    {/* --- Step 1: Import from statements --- */}
+                    <section>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-sky-500 text-white text-xs font-bold">1</span>
+                        <h3 className="text-base font-semibold text-white">Import from statements</h3>
+                      </div>
+                      <DocumentImport
+                        properties={properties}
+                        expenses={expenses}
+                        rentPayments={rentPayments}
+                        addExpense={addExpense}
+                        addRentPayment={addRentPayment}
+                        showToast={showToast}
+                      />
+                    </section>
+
+                    {/* --- Step 2: Action items --- */}
+                    <section>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-bold">2</span>
+                        <h3 className="text-base font-semibold text-white">Things to handle</h3>
+                        {totalCount > 0 && (
+                          <span className="text-xs bg-amber-500/20 text-amber-400 px-2.5 py-0.5 rounded-full font-bold">{totalCount}</span>
+                        )}
+                      </div>
+                    </section>
 
                     {totalCount === 0 && (
                       <div className="text-center py-16">
@@ -2105,6 +2142,9 @@ export default function DulinProperties() {
                   </div>
                 );
               })()}
+
+              {/* ========== HELP SECTION ========== */}
+              {activeSection === 'help' && <HelpPage />}
 
               {/* ========== FINANCIALS SECTION ========== */}
               {activeSection === 'financials' && (
@@ -2477,6 +2517,16 @@ export default function DulinProperties() {
 
         {/* (Legacy ExpenseReportUpload modal removed — use Documents > Import) */}
 
+        {/* Schedule E (tax form summary) */}
+        {showScheduleE && (
+          <ScheduleE
+            properties={properties}
+            expenses={expenses}
+            rentPayments={rentPayments}
+            onClose={() => setShowScheduleE(false)}
+          />
+        )}
+
         {/* Property Financial Breakdown Modal */}
         {showPropertyBreakdown && (
           <PropertyFinancialBreakdownModal
@@ -2513,95 +2563,23 @@ export default function DulinProperties() {
           </div>
         )}
 
-        {/* Desktop FAB */}
-        {isOwner && !anyModalOpen && (
-          <div className="hidden md:block fixed top-24 left-6 z-[90]">
-            {showAddNewMenu && (
-              <>
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[89]" onClick={() => setShowAddNewMenu(false)} />
-                <div className="absolute top-16 left-0 z-[91] bg-slate-800/95 backdrop-blur-md border border-white/15 rounded-2xl p-4 shadow-2xl w-[240px]"
-                  style={{ animation: 'fabGridIn 0.15s ease-out both' }}>
-                  <div className="grid grid-cols-3 gap-3">
-                    {[
-                      { action: () => setShowAddTaskModal('create'), icon: '✅', label: 'Task', gradient: 'from-blue-400 to-indigo-500' },
-                      { action: () => setShowAddRentModal('create'), icon: '💰', label: 'Rent', gradient: 'from-emerald-400 to-green-500' },
-                      { action: () => setShowAddExpenseModal('create'), icon: '💸', label: 'Expense', gradient: 'from-red-400 to-rose-500' },
-                      { action: () => setShowAddDocumentModal('create'), icon: '📄', label: 'Document', gradient: 'from-amber-400 to-orange-500' },
-                      { action: () => setShowSharedListModal('create'), icon: '📋', label: 'List', gradient: 'from-emerald-400 to-teal-500' },
-                    ].map((item, idx) => (
-                      <button key={item.label} onClick={() => { setShowAddNewMenu(false); item.action(); }}
-                        className="flex flex-col items-center justify-center gap-1.5 py-2.5 rounded-xl hover:bg-white/10 transition active:scale-95"
-                        style={{ animation: `fabItemIn 0.12s ease-out ${idx * 0.02}s both` }}>
-                        <span className={`w-12 h-12 rounded-xl bg-gradient-to-br ${item.gradient} flex items-center justify-center text-xl shadow-md`}>{item.icon}</span>
-                        <span className="text-[11px] text-white/70 font-medium leading-tight">{item.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <style>{`
-                  @keyframes fabGridIn { from { opacity: 0; transform: scale(0.9) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-                  @keyframes fabItemIn { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
-                `}</style>
-              </>
-            )}
-            <button onClick={() => setShowAddNewMenu(!showAddNewMenu)}
-              className={`w-12 h-12 rounded-full shadow-2xl flex items-center justify-center transition-all duration-200 active:scale-90 ${
-                showAddNewMenu ? 'bg-gradient-to-r from-pink-500 to-rose-500 rotate-45' : 'bg-gradient-to-r from-purple-500 to-violet-600 hover:shadow-purple-500/30'
-              }`}
-              style={{ boxShadow: showAddNewMenu ? '0 8px 32px rgba(236,72,153,0.4)' : '0 8px 32px rgba(139,92,246,0.4)' }}>
-              <Plus className="w-6 h-6 text-white transition-transform duration-200" />
-            </button>
-          </div>
-        )}
+        {/* (Desktop and mobile "+" FAB menus removed — per-section Add buttons handle this now.) */}
 
-        {/* Mobile Bottom Navigation with FAB */}
+        {/* Mobile Bottom Navigation */}
         {!anyModalOpen && (
           <nav className="md:hidden fixed bottom-0 left-0 right-0 z-[100]" style={{ transform: 'translateZ(0)' }}>
-            {/* FAB Menu Popup */}
-            {showAddNewMenu && isOwner && (
-              <>
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[99]" onClick={() => setShowAddNewMenu(false)} />
-                <div className="fixed right-4 z-[101] bg-slate-800/95 backdrop-blur-md border border-white/15 rounded-2xl p-4 shadow-2xl w-[240px]"
-                  style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 132px)', animation: 'fabGridUp 0.2s cubic-bezier(0.16,1,0.3,1) both', transformOrigin: 'bottom right' }}>
-                  <div className="grid grid-cols-3 gap-3">
-                    {[
-                      { action: () => setShowAddTaskModal('create'), icon: '✅', label: 'Task', gradient: 'from-blue-400 to-indigo-500' },
-                      { action: () => setShowAddRentModal('create'), icon: '💰', label: 'Rent', gradient: 'from-emerald-400 to-green-500' },
-                      { action: () => setShowAddExpenseModal('create'), icon: '💸', label: 'Expense', gradient: 'from-red-400 to-rose-500' },
-                      { action: () => setShowAddDocumentModal('create'), icon: '📄', label: 'Document', gradient: 'from-amber-400 to-orange-500' },
-                      { action: () => setShowSharedListModal('create'), icon: '📋', label: 'List', gradient: 'from-emerald-400 to-teal-500' },
-                    ].map((item, idx) => {
-                      const row = Math.floor(idx / 3);
-                      const delay = (1 - row) * 0.04 + (idx % 3) * 0.015;
-                      return (
-                        <button key={item.label} onClick={() => { setShowAddNewMenu(false); item.action(); }}
-                          className="flex flex-col items-center justify-center gap-1.5 py-2.5 rounded-xl hover:bg-white/10 transition active:scale-95"
-                          style={{ animation: `fabItemUp 0.25s cubic-bezier(0.16,1,0.3,1) ${delay}s both` }}>
-                          <span className={`w-12 h-12 rounded-xl bg-gradient-to-br ${item.gradient} flex items-center justify-center text-xl shadow-md`}>{item.icon}</span>
-                          <span className="text-[11px] text-white/70 font-medium leading-tight">{item.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                <style>{`
-                  @keyframes fabGridUp { from { opacity: 0; transform: translateX(-50%) scaleY(0.3) scaleX(0.8) translateY(20px); } to { opacity: 1; transform: translateX(-50%) scaleY(1) scaleX(1) translateY(0); } }
-                  @keyframes fabItemUp { from { opacity: 0; transform: translateY(12px) scale(0.7); } to { opacity: 1; transform: translateY(0) scale(1); } }
-                `}</style>
-              </>
-            )}
-
             {/* Nav bar */}
             <div className="relative bg-slate-900 border-t border-white/10" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
               {/* Tab buttons — all 6 sections */}
               <div className="flex items-end justify-around px-1 pt-1 pb-1">
                 {[
+                  { id: 'input', label: 'Input', emoji: '📥', gradient: 'from-sky-400 to-blue-500' },
                   { id: 'dashboard', label: 'Home', emoji: '📊', gradient: 'from-purple-500 to-violet-500' },
                   { id: 'rentals', label: 'Props', emoji: '🏠', gradient: 'from-teal-400 to-cyan-500' },
-                  { id: 'tenants', label: 'Tenants', emoji: '👤', gradient: 'from-blue-400 to-indigo-500' },
                   { id: 'rent', label: 'Income', emoji: '💰', gradient: 'from-emerald-400 to-green-500' },
                   { id: 'expenses', label: 'Costs', emoji: '💸', gradient: 'from-red-400 to-rose-500' },
                   { id: 'documents', label: 'Docs', emoji: '📄', gradient: 'from-amber-400 to-orange-500' },
+                  { id: 'help', label: 'Help', emoji: '❓', gradient: 'from-pink-400 to-rose-500' },
                 ].map((section) => (
                   <button
                     key={section.id}
@@ -2626,23 +2604,6 @@ export default function DulinProperties() {
               </div>
             </div>
 
-            {/* FAB — floating above bottom nav on right side */}
-            {isOwner && (
-              <button
-                onClick={() => setShowAddNewMenu(!showAddNewMenu)}
-                className={`fixed right-4 z-[101] rounded-full flex items-center justify-center transition-all duration-200 active:scale-90 ${
-                  showAddNewMenu ? 'bg-gradient-to-r from-pink-500 to-rose-500 rotate-45' : 'bg-gradient-to-r from-purple-500 to-violet-600'
-                }`}
-                style={{
-                  bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)',
-                  width: '3rem', height: '3rem',
-                  boxShadow: showAddNewMenu
-                    ? '0 4px 24px rgba(236,72,153,0.6)'
-                    : '0 4px 24px rgba(139,92,246,0.6)',
-                }}>
-                <Plus className="w-5 h-5 text-white transition-transform duration-200" />
-              </button>
-            )}
           </nav>
         )}
 

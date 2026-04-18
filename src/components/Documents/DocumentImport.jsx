@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useMemo } from 'react';
-import { Upload, ChevronDown, Check, X, AlertCircle, FileText, Trash2, Loader, Calendar } from 'lucide-react';
+import { Upload, ChevronDown, Check, X, AlertCircle, FileText, Trash2, Loader, Calendar, ArrowRight } from 'lucide-react';
+import HelpTip from '../HelpTip';
 import { expenseCategories, incomeCategories } from '../../constants';
 import { formatCurrency } from '../../utils';
 import { parseOwnerPacket } from '../../utils/ownerPacketParser';
@@ -21,27 +22,40 @@ const SOURCE_TYPES = [
   { id: 'absolute', label: 'Absolute', color: 'teal', icon: '🏠', canParsePdf: true, expectedCountPerMonth: 12 },
   { id: 'ffb-bank', label: 'FFB Bank', color: 'blue', icon: '🏦', canParsePdf: false, expectedCountPerMonth: 8 },
   { id: 'citi-card', label: 'Citi Card', color: 'amber', icon: '💳', canParsePdf: false, expectedCountPerMonth: 2 },
+  { id: 'costco-card', label: 'Costco Card', color: 'rose', icon: '🛒', canParsePdf: false, expectedCountPerMonth: 3 },
 ];
 
-/** Return an array of the last N months as { ym: "YYYY-MM", label: "March 2026", short: "Mar '26" }, most-recent first. */
-function lastMonths(n) {
+/**
+ * Return months for the current year in chronological order (Jan first),
+ * each as { ym: "YYYY-MM", label: "March 2026", short: "Mar '26", isFuture, isCurrent }.
+ * When called from the grid we reverse to newest-first and collapse the "done" rows.
+ */
+function monthsForYear(year) {
   const out = [];
   const now = new Date();
-  for (let i = 0; i < n; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+  const curYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  for (let m = 0; m < 12; m++) {
+    const d = new Date(year, m, 1);
     const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    const short = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }).replace(' ', " '");
-    out.push({ ym, label, short });
+    const short = d.toLocaleDateString('en-US', { month: 'short' });
+    out.push({
+      ym,
+      label,
+      short,
+      isFuture: ym > curYM,
+      isCurrent: ym === curYM,
+    });
   }
   return out;
 }
 
 const colorMap = {
   purple: { bg: 'bg-purple-500/10', border: 'border-purple-500/20', text: 'text-purple-400', accent: 'bg-purple-500' },
-  teal: { bg: 'bg-teal-500/10', border: 'border-teal-500/20', text: 'text-teal-400', accent: 'bg-teal-500' },
-  blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/20', text: 'text-blue-400', accent: 'bg-blue-500' },
-  amber: { bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-400', accent: 'bg-amber-500' },
+  teal:   { bg: 'bg-teal-500/10',   border: 'border-teal-500/20',   text: 'text-teal-400',   accent: 'bg-teal-500' },
+  blue:   { bg: 'bg-blue-500/10',   border: 'border-blue-500/20',   text: 'text-blue-400',   accent: 'bg-blue-500' },
+  amber:  { bg: 'bg-amber-500/10',  border: 'border-amber-500/20',  text: 'text-amber-400',  accent: 'bg-amber-500' },
+  rose:   { bg: 'bg-rose-500/10',   border: 'border-rose-500/20',   text: 'text-rose-400',   accent: 'bg-rose-500' },
 };
 
 /** Try to match a street address from a statement to a property in the properties list.
@@ -476,7 +490,11 @@ export default function DocumentImport({ properties, expenses, rentPayments = []
     return grid;
   }, [expenses, rentPayments]);
 
-  const MONTHS = useMemo(() => lastMonths(6), []);
+  // All 12 months of the current year (chronological). Newest-first + row collapsing is
+  // handled in the grid render so we can also show an "X months completed — tap to expand" row.
+  const CURRENT_YEAR = new Date().getFullYear();
+  const MONTHS = useMemo(() => monthsForYear(CURRENT_YEAR), [CURRENT_YEAR]);
+  const [showCompletedMonths, setShowCompletedMonths] = useState(false);
 
   // Toggle entry selected state
   const toggleEntry = useCallback((idx) => {
@@ -674,78 +692,170 @@ export default function DocumentImport({ properties, expenses, rentPayments = []
           </div>
         </div>
 
-        {/* Monthly progress grid — rows = last 6 months, columns = 4 statement sources */}
-        <div className="mb-4 border border-white/10 rounded-2xl overflow-hidden bg-white/[0.02]">
-          <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-            <h4 className="text-sm font-semibold text-white">Statements by month</h4>
-            <span className="text-xs text-white/40">last 6 months</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-white/[0.06]">
-                  <th className="text-left px-3 py-2 text-xs font-semibold text-white/50">Month</th>
-                  {SOURCE_TYPES.map(src => (
-                    <th key={src.id} className="text-center px-3 py-2 text-xs font-semibold text-white/50">
-                      <span className="whitespace-nowrap">{src.icon} {src.label}</span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {MONTHS.map(m => (
-                  <tr key={m.ym} className="border-b border-white/[0.04] last:border-0">
-                    <td className="px-3 py-2 text-sm text-white/80 whitespace-nowrap">{m.label}</td>
-                    {SOURCE_TYPES.map(src => {
-                      const count = statusByMonth[m.ym]?.[src.label] || 0;
-                      const expected = src.expectedCountPerMonth;
-                      let state = 'empty';
-                      if (count >= expected) state = 'complete';
-                      else if (count > 0) state = 'partial';
-                      const chipCls =
-                        state === 'complete' ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300' :
-                        state === 'partial'  ? 'bg-amber-500/15 border-amber-500/30 text-amber-300' :
-                                               'bg-white/[0.03] border-white/10 text-white/40 hover:bg-white/[0.06]';
-                      const icon =
-                        state === 'complete' ? '✅' :
-                        state === 'partial'  ? '⚠️' :
-                                               '⬜';
-                      const label =
-                        state === 'complete' ? `${count} imported` :
-                        state === 'partial'  ? `${count} of ~${expected}` :
-                                               'Add';
-                      return (
-                        <td key={src.id} className="px-2 py-2 text-center">
+        {/* Monthly progress grid — 12 months of current year, newest at top, completed rows collapse. */}
+        {(() => {
+          const cellState = (ym, src) => {
+            const count = statusByMonth[ym]?.[src.label] || 0;
+            if (count >= src.expectedCountPerMonth) return { state: 'complete', count };
+            if (count > 0) return { state: 'partial', count };
+            return { state: 'empty', count };
+          };
+          const isMonthFullyDone = (m) =>
+            !m.isFuture && SOURCE_TYPES.every(src => cellState(m.ym, src).state === 'complete');
+
+          const ordered = [...MONTHS].reverse(); // newest at top
+          const future = ordered.filter(m => m.isFuture);
+          const active = ordered.filter(m => !m.isFuture && !isMonthFullyDone(m));
+          const done   = ordered.filter(m => !m.isFuture && isMonthFullyDone(m));
+
+          const renderRow = (m) => (
+            <tr
+              key={m.ym}
+              className={`border-b border-white/[0.04] last:border-0 ${
+                m.isCurrent ? 'bg-amber-400/[0.06] ring-1 ring-inset ring-amber-400/30' : ''
+              }`}
+            >
+              <td className="px-3 py-2 text-sm whitespace-nowrap">
+                <div className="flex items-center gap-2">
+                  <span className={m.isCurrent ? 'text-amber-300 font-semibold' : 'text-white/80'}>
+                    {m.label}
+                  </span>
+                  {m.isCurrent && (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40">
+                      This month
+                    </span>
+                  )}
+                </div>
+              </td>
+              {SOURCE_TYPES.map(src => {
+                if (m.isFuture) {
+                  return (
+                    <td key={src.id} className="px-2 py-2 text-center">
+                      <span className="text-[11px] text-white/20">—</span>
+                    </td>
+                  );
+                }
+                const { state, count } = cellState(m.ym, src);
+                const expected = src.expectedCountPerMonth;
+                const chipCls =
+                  state === 'complete' ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300' :
+                  state === 'partial'  ? 'bg-amber-500/15 border-amber-500/30 text-amber-300' :
+                                         'bg-white/[0.03] border-white/10 text-white/40 hover:bg-white/[0.06]';
+                const icon =
+                  state === 'complete' ? '✅' :
+                  state === 'partial'  ? '⚠️' :
+                                         '⬜';
+                const label =
+                  state === 'complete' ? `${count} imported` :
+                  state === 'partial'  ? `${count} of ~${expected}` :
+                                         'Add';
+                return (
+                  <td key={src.id} className="px-2 py-2 text-center">
+                    <button
+                      onClick={() => {
+                        setActiveSource(src.id);
+                        setDetectedMonth(m.ym);
+                        setEntries([]);
+                        setFfbMonth(null);
+                        setUploadedFileName('');
+                        setParseError('');
+                      }}
+                      className={`w-full px-2 py-1.5 rounded-lg border text-xs transition ${chipCls}`}
+                      title={`${src.label} — ${m.label}: ${label}`}
+                    >
+                      <span className="mr-1" aria-hidden="true">{icon}</span>
+                      <span className="font-medium">{label}</span>
+                    </button>
+                  </td>
+                );
+              })}
+            </tr>
+          );
+
+          return (
+            <div className="mb-4 border border-white/10 rounded-2xl overflow-hidden bg-white/[0.02]">
+              <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-white flex items-center gap-1.5">
+                  {CURRENT_YEAR} statements by month
+                  <HelpTip label="About this grid">
+                    Each row is a month. Each column is one of the statements Dianne receives every month.
+                    A colored box shows what&rsquo;s happening: <span className="text-emerald-300">green ✅</span> = already
+                    imported, <span className="text-amber-300">amber ⚠️</span> = partial, <span className="text-white/50">grey ⬜</span> = nothing yet.
+                    Click any box to add or review that statement.
+                  </HelpTip>
+                </h4>
+                <span className="text-xs text-white/40">
+                  {done.length > 0 && `${done.length} complete · `}
+                  {active.length} still to do
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-white/[0.06]">
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-white/50">Month</th>
+                      {SOURCE_TYPES.map(src => (
+                        <th key={src.id} className="text-center px-3 py-2 text-xs font-semibold text-white/50">
+                          <span className="whitespace-nowrap">{src.icon} {src.label}</span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {future.map(renderRow)}
+                    {active.map(renderRow)}
+                    {done.length > 0 && !showCompletedMonths && (
+                      <tr className="border-b border-white/[0.04] last:border-0">
+                        <td colSpan={1 + SOURCE_TYPES.length} className="px-3 py-3 text-center">
                           <button
-                            onClick={() => {
-                              setActiveSource(src.id);
-                              setDetectedMonth(m.ym);
-                              setEntries([]);
-                              setFfbMonth(null);
-                              setUploadedFileName('');
-                              setParseError('');
-                            }}
-                            className={`w-full px-2 py-1.5 rounded-lg border text-xs transition ${chipCls}`}
-                            title={`${src.label} — ${m.label}: ${label}`}
+                            onClick={() => setShowCompletedMonths(true)}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-medium hover:bg-emerald-500/15 transition"
                           >
-                            <span className="mr-1">{icon}</span>
-                            <span className="font-medium">{label}</span>
+                            <span aria-hidden="true">✅</span>
+                            <span>
+                              {done.length} {done.length === 1 ? 'month' : 'months'} already complete
+                              {done.length > 0 && ` (${done[0].short}${done.length > 1 ? `–${done[done.length - 1].short}` : ''})`}
+                            </span>
+                            <span className="text-emerald-300/60">· tap to show</span>
                           </button>
                         </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="px-4 py-2 text-[11px] text-white/40 border-t border-white/[0.06]">
-            Click any square to add or review that statement. "Complete" needs at least {SOURCE_TYPES.map(s => `${s.icon} ${s.expectedCountPerMonth}`).join(' · ')} entries.
-          </div>
-        </div>
+                      </tr>
+                    )}
+                    {done.length > 0 && showCompletedMonths && (
+                      <>
+                        {done.map(renderRow)}
+                        <tr>
+                          <td colSpan={1 + SOURCE_TYPES.length} className="px-3 py-2 text-center">
+                            <button
+                              onClick={() => setShowCompletedMonths(false)}
+                              className="text-xs text-white/40 hover:text-white/70"
+                            >
+                              Hide completed months
+                            </button>
+                          </td>
+                        </tr>
+                      </>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="px-4 py-2 text-[11px] text-white/40 border-t border-white/[0.06]">
+                A month is &ldquo;complete&rdquo; when every source has at least{' '}
+                {SOURCE_TYPES.map(s => `${s.icon} ${s.expectedCountPerMonth}`).join(' · ')} entries.
+                Current month is highlighted in <span className="text-amber-300">amber</span>.
+              </div>
+            </div>
+          );
+        })()}
 
-        <h4 className="text-sm font-semibold text-white/70 mb-2 mt-4">Or pick a company and add any month</h4>
-        <div className="grid grid-cols-2 gap-3">
+        <h4 className="text-sm font-semibold text-white/70 mb-2 mt-4 flex items-center gap-1.5">
+          Or pick a source to add any month
+          <HelpTip label="When to use this">
+            Use the grid above to fix a specific month. Use these cards when you just want to add a statement
+            and will tell the app which month it&rsquo;s for (or let it auto-detect from the PDF).
+          </HelpTip>
+        </h4>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {SOURCE_TYPES.map(src => {
             const c = colorMap[src.color];
             return (
@@ -759,11 +869,16 @@ export default function DocumentImport({ properties, expenses, rentPayments = []
                   setUploadedFileName('');
                   setParseError('');
                 }}
-                className={`${c.bg} border ${c.border} rounded-2xl p-5 text-center hover:brightness-110 transition group`}
+                className={`${c.bg} border ${c.border} rounded-2xl p-5 text-center hover:brightness-110 transition group relative`}
               >
-                <span className="text-2xl block mb-2">{src.icon}</span>
-                <span className={`text-sm font-semibold ${c.text}`}>{src.label}</span>
-                <p className="text-[10px] text-white/30 mt-1">Upload or paste statement</p>
+                <span className="text-3xl block mb-2" aria-hidden="true">{src.icon}</span>
+                <span className={`text-sm font-semibold ${c.text} block`}>{src.label}</span>
+                <p className="text-[11px] text-white/40 mt-1">
+                  {src.canParsePdf ? 'Drop PDF or click' : 'Paste statement text'}
+                </p>
+                <span className={`absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition ${c.text}`}>
+                  <ArrowRight className="w-4 h-4" />
+                </span>
               </button>
             );
           })}
