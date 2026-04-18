@@ -77,6 +77,8 @@ export default function InputDataPage({
           rentPayments={rentPayments}
           addExpense={addExpense}
           addRentPayment={addRentPayment}
+          deleteExpense={deleteExpense}
+          deleteRentPayment={deleteRentPayment}
           showToast={showToast}
         />
       )}

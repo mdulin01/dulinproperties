@@ -457,7 +457,26 @@ function parseAbsoluteFeb2026(properties) {
   return entries;
 }
 
-export default function DocumentImport({ properties, expenses, rentPayments = [], addExpense, addRentPayment, showToast, onClose }) {
+/**
+ * Compact fingerprint so exact duplicates from re-imports can be detected without
+ * relying on amount + date alone (which collides on recurring items like rent/mgmt fees).
+ * Format: "YYYY-MM-DD|source|propId|amount|first 24 chars of description".
+ */
+function fingerprintEntry(e) {
+  const date = (e.date || e.datePaid || '').slice(0, 10);
+  const src = e.sourceDocument || '';
+  const propId = String(e.propertyId || '');
+  const amt = (parseFloat(e.amount) || 0).toFixed(2);
+  const desc = (e.description || e.category || '').toLowerCase().replace(/\s+/g, ' ').slice(0, 24).trim();
+  return `${date}|${src}|${propId}|${amt}|${desc}`;
+}
+
+export default function DocumentImport({
+  properties, expenses, rentPayments = [],
+  addExpense, addRentPayment,
+  deleteExpense, deleteRentPayment,
+  showToast, onClose,
+}) {
   const [activeSource, setActiveSource] = useState(null);
   const [entries, setEntries] = useState([]); // parsed entries for review
   const [importing, setImporting] = useState(false);
@@ -488,6 +507,21 @@ export default function DocumentImport({ properties, expenses, rentPayments = []
       touch(ym, r.sourceDocument);
     }
     return grid;
+  }, [expenses, rentPayments]);
+
+  // Fingerprint set of every existing imported entry (expense + rent). Used to auto-skip
+  // exact duplicates when parsing a re-imported PDF.
+  const existingFingerprints = useMemo(() => {
+    const set = new Set();
+    for (const e of expenses || []) {
+      if (!e.sourceDocument) continue;
+      set.add(fingerprintEntry(e));
+    }
+    for (const r of rentPayments || []) {
+      if (!r.sourceDocument) continue;
+      set.add(fingerprintEntry({ ...r, date: r.datePaid || `${r.month || ''}-01` }));
+    }
+    return set;
   }, [expenses, rentPayments]);
 
   // All 12 months of the current year (chronological). Newest-first + row collapsing is
@@ -525,8 +559,9 @@ export default function DocumentImport({ properties, expenses, rentPayments = []
     let count = 0;
 
     selected.forEach(entry => {
+      // Compute fingerprint from the final entry payload so future imports can dedup against it.
+      const fp = fingerprintEntry(entry);
       if (entry.flowType === 'income') {
-        // Add as rent payment
         addRentPayment({
           id: `import-${Date.now()}-${count}`,
           propertyId: entry.propertyId || '',
@@ -539,9 +574,10 @@ export default function DocumentImport({ properties, expenses, rentPayments = []
           category: entry.incomeCategory || 'rent',
           notes: `Imported from ${entry.sourceDocument}`,
           sourceDocument: entry.sourceDocument,
+          fingerprint: fp,
+          validated: false,
         });
       } else {
-        // Add as expense
         addExpense({
           id: `import-${Date.now()}-${count}`,
           propertyId: entry.propertyId || '',
@@ -554,6 +590,8 @@ export default function DocumentImport({ properties, expenses, rentPayments = []
           notes: entry.checkNumber ? `Check #${entry.checkNumber}` : (entry.notes || ''),
           sourceDocument: entry.sourceDocument,
           checkNumber: entry.checkNumber || '',
+          fingerprint: fp,
+          validated: false,
         });
       }
       count++;
@@ -601,11 +639,11 @@ export default function DocumentImport({ properties, expenses, rentPayments = []
       // Auto-detect month
       if (result.period?.monthStr) setDetectedMonth(result.period.monthStr);
 
-      // Map parser output to our entry shape
+      // Map parser output to our entry shape, then fingerprint each to auto-skip duplicates.
       const mapped = result.allTransactions.map((tx, idx) => {
         const matched = matchProperty(tx.propertyAddress || tx.propertyFullAddress, properties);
         const isIncome = tx.flowType === 'income' || (tx.cashIn > 0 && !tx.isDistribution);
-        return {
+        const entry = {
           id: `upload-${Date.now()}-${idx}`,
           description: tx.description || tx.payee || tx.type || 'Unknown',
           amount: tx.amount || tx.cashIn || tx.cashOut || 0,
@@ -619,9 +657,16 @@ export default function DocumentImport({ properties, expenses, rentPayments = []
           sourceDocument: sourceLabel,
           flowType: isIncome ? 'income' : 'expense',
           incomeCategory: isIncome ? 'rent' : undefined,
-          selected: !tx.isDistribution, // default skip owner distributions
           imported: false,
         };
+        // Dedup: fingerprint match = likely re-import of the same line → auto-skip.
+        const fp = fingerprintEntry(entry);
+        const isDuplicate = existingFingerprints.has(fp);
+        entry.fingerprint = fp;
+        entry.isDuplicate = isDuplicate;
+        // Default selection: skip owner distributions AND skip duplicates
+        entry.selected = !tx.isDistribution && !isDuplicate;
+        return entry;
       });
 
       setEntries(mapped);
@@ -1036,10 +1081,68 @@ export default function DocumentImport({ properties, expenses, rentPayments = []
       {/* Entries for review */}
       {entries.length > 0 && (
         <>
+          {/* Dedup + month-level warning. Counts existing records for the same month+source. */}
+          {(() => {
+            const ym = (entries.find(e => e.date)?.date || '').slice(0, 7) || detectedMonth;
+            const existingSame = (expenses || []).filter(e =>
+              e.sourceDocument === source.label && (e.date || '').slice(0, 7) === ym
+            ).length + (rentPayments || []).filter(r =>
+              r.sourceDocument === source.label &&
+              ((r.month || (r.datePaid || '').slice(0, 7)) === ym)
+            ).length;
+            const dupCount = entries.filter(e => e.isDuplicate).length;
+            if (existingSame === 0 && dupCount === 0) return null;
+            return (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 mb-3">
+                <div className="flex items-start gap-2 mb-2">
+                  <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-amber-200 leading-relaxed">
+                    {existingSame > 0 && (
+                      <div className="mb-1">
+                        <strong>This month already has {existingSame} {source.label} {existingSame === 1 ? 'entry' : 'entries'}.</strong>
+                        {' '}Importing on top will add alongside them (may create duplicates).
+                      </div>
+                    )}
+                    {dupCount > 0 && (
+                      <div>
+                        {dupCount} of {entries.length} {dupCount === 1 ? 'row looks like a' : 'rows look like'} duplicate{dupCount === 1 ? '' : 's'} of existing {dupCount === 1 ? 'entry' : 'entries'} and {dupCount === 1 ? 'was' : 'have been'} pre-unchecked.
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {existingSame > 0 && deleteExpense && deleteRentPayment && (
+                  <div className="flex items-center gap-2 mt-2 pl-6">
+                    <button
+                      onClick={() => {
+                        if (!confirm(`Delete all ${existingSame} existing ${source.label} entries for ${ym || 'this month'} before importing? This cannot be undone.`)) return;
+                        // Collect IDs to delete first so iteration doesn't race with state updates
+                        const expIds = (expenses || [])
+                          .filter(e => e.sourceDocument === source.label && (e.date || '').slice(0, 7) === ym)
+                          .map(e => e.id);
+                        const rentIds = (rentPayments || [])
+                          .filter(r => r.sourceDocument === source.label && ((r.month || (r.datePaid || '').slice(0, 7)) === ym))
+                          .map(r => r.id);
+                        for (const id of expIds) deleteExpense(id);
+                        for (const id of rentIds) deleteRentPayment(id);
+                        showToast?.(`Removed ${expIds.length + rentIds.length} existing entries — you can now import fresh`, 'info');
+                      }}
+                      className="px-3 py-1.5 bg-red-500/20 border border-red-500/40 text-red-200 rounded-lg text-xs font-medium hover:bg-red-500/30 transition"
+                    >
+                      Replace existing ({existingSame}) — delete first, then import
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Summary bar */}
           <div className={`${c.bg} border ${c.border} rounded-xl p-3 mb-3 flex items-center justify-between`}>
             <div className="flex items-center gap-3">
               <span className="text-sm text-white/70">{notImported.length} entries</span>
+              {entries.filter(e => e.isDuplicate).length > 0 && (
+                <span className="text-xs text-amber-300">({entries.filter(e => e.isDuplicate).length} pre-unchecked as duplicates)</span>
+              )}
               <button onClick={() => selectAll(true)} className="text-xs text-white/40 hover:text-white/70 underline">Select All</button>
               <button onClick={() => selectAll(false)} className="text-xs text-white/40 hover:text-white/70 underline">Deselect All</button>
             </div>
