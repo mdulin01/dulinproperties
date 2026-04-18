@@ -100,57 +100,78 @@ function matchProperty(addressFromStatement, properties) {
 
   // Common street-type tokens we can drop when comparing cores.
   const STREET_TYPES = new Set(['st', 'rd', 'dr', 'ave', 'blvd', 'ln', 'ct', 'pl', 'way', 'cir', 'loop', 'pkwy', 'hwy', 'trl', 'trail']);
+  // Compass directions — single letter tokens that are NOT unit markers.
+  const DIRECTIONS = new Set(['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']);
 
   const addr = normalize(addressFromStatement);
   const addrNoSpace = stripSpaces(addressFromStatement);
   if (!addr) return null;
 
-  // Tier 1: exact normalized match.
+  // We try matching against every available label on the property (street,
+  // address, name) because the unit suffix often lives in `name` only —
+  // e.g. street="1329 S 11th St", name="1329 S 11th A".
+  const labelsFor = (p) => [p.street, p.address, p.name].filter(Boolean);
+
+  // Tier 1: exact normalized match on any label.
   for (const p of properties) {
-    if (normalize(p.street || p.address || p.name) === addr) return p;
+    for (const label of labelsFor(p)) {
+      if (normalize(label) === addr) return p;
+    }
   }
 
-  // Tier 2: space-insensitive equality.
+  // Tier 2: space-insensitive equality on any label.
   for (const p of properties) {
-    if (stripSpaces(p.street || p.address || p.name) === addrNoSpace) return p;
+    for (const label of labelsFor(p)) {
+      if (stripSpaces(label) === addrNoSpace) return p;
+    }
   }
 
-  // Tier 3: substring either direction (normalized).
+  // Tier 3: substring either direction (normalized) on any label.
   for (const p of properties) {
-    const ps = normalize(p.street || p.address || p.name);
-    if (!ps) continue;
-    if (addr.includes(ps) || ps.includes(addr)) return p;
+    for (const label of labelsFor(p)) {
+      const ps = normalize(label);
+      if (!ps) continue;
+      if (addr.includes(ps) || ps.includes(addr)) return p;
+    }
   }
 
-  // Tier 4: substring either direction (space-stripped).
+  // Tier 4: substring either direction (space-stripped) on any label.
   for (const p of properties) {
-    const ps = stripSpaces(p.street || p.address || p.name);
-    if (!ps) continue;
-    if (addrNoSpace.includes(ps) || ps.includes(addrNoSpace)) return p;
+    for (const label of labelsFor(p)) {
+      const ps = stripSpaces(label);
+      if (!ps) continue;
+      if (addrNoSpace.includes(ps) || ps.includes(addrNoSpace)) return p;
+    }
   }
 
-  // Tier 5: same street number + same core street name (first non-type word) + same unit letter.
+  // Tier 5: same street number + same core street name + same unit letter.
   const tokenize = (s) => s.split(' ').filter(Boolean);
   const partsOf = (s) => {
     const toks = tokenize(s);
     const num = toks[0] || '';
-    // unit = a single-letter token anywhere after the number (trailing unit marker).
-    const unit = toks.slice(1).find(t => /^[a-z]$/.test(t)) || '';
-    // core = first non-number, non-unit, non-street-type token.
-    const core = toks.slice(1).find(t => !STREET_TYPES.has(t) && t !== unit) || '';
+    // unit = single-letter token that is NOT a compass direction (N/S/E/W).
+    const unit = toks.slice(1).find(t => /^[a-z]$/.test(t) && !DIRECTIONS.has(t)) || '';
+    // core = first multi-character token that isn't a street-type suffix.
+    // "11th", "encino", "brookhollow" all qualify; "st" / "rd" / "dr" do not.
+    const core = toks.slice(1).find(t => t.length > 1 && !STREET_TYPES.has(t)) || '';
     return { num, unit, core };
   };
 
   const A = partsOf(addr);
   if (A.num && A.core) {
     for (const p of properties) {
-      const P = partsOf(normalize(p.street || p.address || p.name));
-      if (A.num !== P.num) continue;
-      if (A.core !== P.core) continue;
-      // If both sides have a unit, they must match. If only one has a unit, skip
-      // (ambiguous — refuse to guess).
-      if (A.unit && P.unit && A.unit !== P.unit) continue;
-      if ((A.unit && !P.unit) || (!A.unit && P.unit)) continue;
+      // Collect parts from every label so we can see the unit even when it's
+      // only in `name` and not in `street`. The "effective" unit is any unit
+      // that appears in ANY label.
+      const partsList = labelsFor(p).map(l => partsOf(normalize(l)));
+      if (!partsList.some(P => P.num === A.num && P.core === A.core)) continue;
+      const propUnits = new Set(partsList.map(P => P.unit).filter(Boolean));
+      if (A.unit) {
+        if (propUnits.size === 0) continue;      // source has unit, prop has none
+        if (!propUnits.has(A.unit)) continue;    // different unit letters
+      } else if (propUnits.size > 0) {
+        continue; // prop has a unit, source has none → ambiguous
+      }
       return p;
     }
   }
