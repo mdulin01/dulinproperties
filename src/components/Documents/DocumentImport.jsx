@@ -1,7 +1,8 @@
-import React, { useState, useCallback } from 'react';
-import { Upload, ChevronDown, Check, X, AlertCircle, FileText, Trash2 } from 'lucide-react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
+import { Upload, ChevronDown, Check, X, AlertCircle, FileText, Trash2, Loader, Calendar } from 'lucide-react';
 import { expenseCategories, incomeCategories } from '../../constants';
 import { formatCurrency } from '../../utils';
+import { parseOwnerPacket } from '../../utils/ownerPacketParser';
 
 /**
  * DocumentImport – upload/parse management company statements, bank statements, etc.
@@ -16,11 +17,25 @@ import { formatCurrency } from '../../utils';
  */
 
 const SOURCE_TYPES = [
-  { id: 'barnett-hill', label: 'Barnett & Hill', color: 'purple', icon: '🏢' },
-  { id: 'absolute', label: 'Absolute', color: 'teal', icon: '🏠' },
-  { id: 'ffb-bank', label: 'FFB Bank', color: 'blue', icon: '🏦' },
-  { id: 'citi-card', label: 'Citi Card', color: 'amber', icon: '💳' },
+  { id: 'barnett-hill', label: 'Barnett & Hill', color: 'purple', icon: '🏢', canParsePdf: true, expectedCountPerMonth: 10 },
+  { id: 'absolute', label: 'Absolute', color: 'teal', icon: '🏠', canParsePdf: true, expectedCountPerMonth: 12 },
+  { id: 'ffb-bank', label: 'FFB Bank', color: 'blue', icon: '🏦', canParsePdf: false, expectedCountPerMonth: 8 },
+  { id: 'citi-card', label: 'Citi Card', color: 'amber', icon: '💳', canParsePdf: false, expectedCountPerMonth: 2 },
 ];
+
+/** Return an array of the last N months as { ym: "YYYY-MM", label: "March 2026", short: "Mar '26" }, most-recent first. */
+function lastMonths(n) {
+  const out = [];
+  const now = new Date();
+  for (let i = 0; i < n; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const short = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }).replace(' ', " '");
+    out.push({ ym, label, short });
+  }
+  return out;
+}
 
 const colorMap = {
   purple: { bg: 'bg-purple-500/10', border: 'border-purple-500/20', text: 'text-purple-400', accent: 'bg-purple-500' },
@@ -428,12 +443,40 @@ function parseAbsoluteFeb2026(properties) {
   return entries;
 }
 
-export default function DocumentImport({ properties, expenses, addExpense, addRentPayment, showToast, onClose }) {
+export default function DocumentImport({ properties, expenses, rentPayments = [], addExpense, addRentPayment, showToast, onClose }) {
   const [activeSource, setActiveSource] = useState(null);
   const [entries, setEntries] = useState([]); // parsed entries for review
   const [importing, setImporting] = useState(false);
   const [importedCount, setImportedCount] = useState(0);
   const [ffbMonth, setFfbMonth] = useState(null); // 'jan26' | 'feb26' for FFB sub-selector
+  const [detectedMonth, setDetectedMonth] = useState(null); // auto-detected from uploaded PDF period
+  const [parsingPdf, setParsingPdf] = useState(false);
+  const [parseError, setParseError] = useState('');
+  const [uploadedFileName, setUploadedFileName] = useState('');
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // Build a { "YYYY-MM": { "Source Label": count } } map of existing imports
+  // so the monthly grid can show which statements have been processed.
+  const statusByMonth = useMemo(() => {
+    const grid = {};
+    const touch = (ym, src) => {
+      if (!ym || !src) return;
+      if (!grid[ym]) grid[ym] = {};
+      grid[ym][src] = (grid[ym][src] || 0) + 1;
+    };
+    for (const e of expenses || []) {
+      const ym = (e.date || '').slice(0, 7);
+      touch(ym, e.sourceDocument);
+    }
+    for (const r of rentPayments || []) {
+      const ym = (r.month || (r.datePaid || '').slice(0, 7));
+      touch(ym, r.sourceDocument);
+    }
+    return grid;
+  }, [expenses, rentPayments]);
+
+  const MONTHS = useMemo(() => lastMonths(6), []);
 
   // Toggle entry selected state
   const toggleEntry = useCallback((idx) => {
@@ -515,6 +558,87 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
     return matches.length > 0 ? matches : null;
   }, [expenses]);
 
+  /**
+   * Parse an uploaded PDF file using pdfjs-dist (via parseOwnerPacket).
+   * Works well for Absolute + Barnett & Hill owner packets.
+   * For FFB / Citi the user should paste text (their layouts vary more).
+   */
+  const handlePdfFile = useCallback(async (file, sourceLabel) => {
+    if (!file) return;
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      setParseError('That does not look like a PDF file. Please drop a .pdf.');
+      return;
+    }
+    setParsingPdf(true);
+    setParseError('');
+    setUploadedFileName(file.name);
+    try {
+      const buf = await file.arrayBuffer();
+      const result = await parseOwnerPacket(new Uint8Array(buf));
+      if (!result.allTransactions || result.allTransactions.length === 0) {
+        setParseError('No transactions found in that PDF. Check that it is a monthly owner statement.');
+        setParsingPdf(false);
+        return;
+      }
+      // Auto-detect month
+      if (result.period?.monthStr) setDetectedMonth(result.period.monthStr);
+
+      // Map parser output to our entry shape
+      const mapped = result.allTransactions.map((tx, idx) => {
+        const matched = matchProperty(tx.propertyAddress || tx.propertyFullAddress, properties);
+        const isIncome = tx.flowType === 'income' || (tx.cashIn > 0 && !tx.isDistribution);
+        return {
+          id: `upload-${Date.now()}-${idx}`,
+          description: tx.description || tx.payee || tx.type || 'Unknown',
+          amount: tx.amount || tx.cashIn || tx.cashOut || 0,
+          date: tx.date || (result.period?.startDate) || '',
+          category: tx.category || (isIncome ? 'rent' : 'other'),
+          vendor: tx.payee || '',
+          tenantName: isIncome ? (tx.payee || '') : '',
+          propertyId: matched ? String(matched.id) : '',
+          propertyName: matched ? `${matched.emoji || '🏠'} ${matched.name}` : `⚠️ ${tx.propertyAddress || 'Unmatched'}`,
+          propertyHint: tx.propertyAddress || '',
+          sourceDocument: sourceLabel,
+          flowType: isIncome ? 'income' : 'expense',
+          incomeCategory: isIncome ? 'rent' : undefined,
+          selected: !tx.isDistribution, // default skip owner distributions
+          imported: false,
+        };
+      });
+
+      setEntries(mapped);
+      setParsingPdf(false);
+    } catch (err) {
+      console.error('PDF parse error:', err);
+      setParseError(`Could not read that PDF: ${err.message}`);
+      setParsingPdf(false);
+    }
+  }, [properties]);
+
+  const handleFileInput = useCallback((e, sourceLabel) => {
+    const file = e.target.files?.[0];
+    if (file) handlePdfFile(file, sourceLabel);
+  }, [handlePdfFile]);
+
+  const handleDragEnter = useCallback((e) => {
+    e.preventDefault(); e.stopPropagation();
+    setDragActive(true);
+  }, []);
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault(); e.stopPropagation();
+    setDragActive(true);
+  }, []);
+  const handleDragLeave = useCallback((e) => {
+    e.preventDefault(); e.stopPropagation();
+    setDragActive(false);
+  }, []);
+  const handleFileDrop = useCallback((e, sourceLabel) => {
+    e.preventDefault(); e.stopPropagation();
+    setDragActive(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file) handlePdfFile(file, sourceLabel);
+  }, [handlePdfFile]);
+
   // Render the source selection cards
   if (!activeSource) {
     return (
@@ -525,11 +649,102 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
             <p className="text-xs text-white/40">Upload and parse management reports, bank statements, or credit card statements</p>
           </div>
           {onClose && (
-            <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20">
+            <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20">
               <X className="w-4 h-4 text-white/60" />
             </button>
           )}
         </div>
+
+        {/* Friendly how-to banner — helps first-time users (or anyone coming back to it) know what to do */}
+        <div className="bg-gradient-to-r from-sky-500/10 to-emerald-500/10 border border-sky-500/30 rounded-2xl p-4 mb-4">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl leading-none mt-0.5" aria-hidden="true">👋</span>
+            <div className="text-sm text-white/80 leading-relaxed">
+              <p className="font-semibold text-white mb-1">How to add your monthly numbers</p>
+              <ol className="list-decimal list-inside space-y-1 text-white/70">
+                <li>Find the month below that you want to add a statement for.</li>
+                <li>Click the empty square under that statement — or pick a company card lower down.</li>
+                <li>Drag the PDF onto the drop zone <em>or</em> click to choose a file.</li>
+                <li>Review the list, uncheck anything you don&rsquo;t want, then click <span className="font-semibold text-white">Import Selected</span>.</li>
+              </ol>
+              <p className="text-xs text-white/50 mt-2">
+                ✅ green = already imported &middot; ⚠️ amber = looks incomplete &middot; ⬜ empty = not yet added
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Monthly progress grid — rows = last 6 months, columns = 4 statement sources */}
+        <div className="mb-4 border border-white/10 rounded-2xl overflow-hidden bg-white/[0.02]">
+          <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+            <h4 className="text-sm font-semibold text-white">Statements by month</h4>
+            <span className="text-xs text-white/40">last 6 months</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-white/[0.06]">
+                  <th className="text-left px-3 py-2 text-xs font-semibold text-white/50">Month</th>
+                  {SOURCE_TYPES.map(src => (
+                    <th key={src.id} className="text-center px-3 py-2 text-xs font-semibold text-white/50">
+                      <span className="whitespace-nowrap">{src.icon} {src.label}</span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {MONTHS.map(m => (
+                  <tr key={m.ym} className="border-b border-white/[0.04] last:border-0">
+                    <td className="px-3 py-2 text-sm text-white/80 whitespace-nowrap">{m.label}</td>
+                    {SOURCE_TYPES.map(src => {
+                      const count = statusByMonth[m.ym]?.[src.label] || 0;
+                      const expected = src.expectedCountPerMonth;
+                      let state = 'empty';
+                      if (count >= expected) state = 'complete';
+                      else if (count > 0) state = 'partial';
+                      const chipCls =
+                        state === 'complete' ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300' :
+                        state === 'partial'  ? 'bg-amber-500/15 border-amber-500/30 text-amber-300' :
+                                               'bg-white/[0.03] border-white/10 text-white/40 hover:bg-white/[0.06]';
+                      const icon =
+                        state === 'complete' ? '✅' :
+                        state === 'partial'  ? '⚠️' :
+                                               '⬜';
+                      const label =
+                        state === 'complete' ? `${count} imported` :
+                        state === 'partial'  ? `${count} of ~${expected}` :
+                                               'Add';
+                      return (
+                        <td key={src.id} className="px-2 py-2 text-center">
+                          <button
+                            onClick={() => {
+                              setActiveSource(src.id);
+                              setDetectedMonth(m.ym);
+                              setEntries([]);
+                              setFfbMonth(null);
+                              setUploadedFileName('');
+                              setParseError('');
+                            }}
+                            className={`w-full px-2 py-1.5 rounded-lg border text-xs transition ${chipCls}`}
+                            title={`${src.label} — ${m.label}: ${label}`}
+                          >
+                            <span className="mr-1">{icon}</span>
+                            <span className="font-medium">{label}</span>
+                          </button>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-4 py-2 text-[11px] text-white/40 border-t border-white/[0.06]">
+            Click any square to add or review that statement. "Complete" needs at least {SOURCE_TYPES.map(s => `${s.icon} ${s.expectedCountPerMonth}`).join(' · ')} entries.
+          </div>
+        </div>
+
+        <h4 className="text-sm font-semibold text-white/70 mb-2 mt-4">Or pick a company and add any month</h4>
         <div className="grid grid-cols-2 gap-3">
           {SOURCE_TYPES.map(src => {
             const c = colorMap[src.color];
@@ -538,11 +753,11 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
                 key={src.id}
                 onClick={() => {
                   setActiveSource(src.id);
-                  // Auto-load pre-parsed data if available
-                  if (src.id === 'barnett-hill') setEntries(parseBHFeb2026(properties));
-                  else if (src.id === 'absolute') setEntries(parseAbsoluteFeb2026(properties));
-                  else if (src.id === 'ffb-bank') { setFfbMonth(null); setEntries([]); }
-                  else setEntries([]);
+                  setEntries([]);
+                  setFfbMonth(null);
+                  setDetectedMonth(null);
+                  setUploadedFileName('');
+                  setParseError('');
                 }}
                 className={`${c.bg} border ${c.border} rounded-2xl p-5 text-center hover:brightness-110 transition group`}
               >
@@ -568,7 +783,15 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => { setActiveSource(null); setEntries([]); setImportedCount(0); setFfbMonth(null); }}
+            onClick={() => {
+              setActiveSource(null);
+              setEntries([]);
+              setImportedCount(0);
+              setFfbMonth(null);
+              setDetectedMonth(null);
+              setUploadedFileName('');
+              setParseError('');
+            }}
             className="text-white/50 hover:text-white transition text-sm"
           >
             ← Back
@@ -602,47 +825,126 @@ export default function DocumentImport({ properties, expenses, addExpense, addRe
 
       {/* Upload area (if no entries yet) */}
       {entries.length === 0 && (activeSource !== 'ffb-bank' || ffbMonth) && (
-        <div className={`${c.bg} border-2 border-dashed ${c.border} rounded-2xl p-8 text-center mb-4`}>
-          <Upload className={`w-8 h-8 ${c.text} mx-auto mb-3 opacity-60`} />
-          <p className={`text-sm font-medium ${c.text} mb-1`}>Upload {source.label} Statement</p>
-          <p className="text-xs text-white/30 mb-4">PDF parsing coming soon — use manual entry below for now</p>
+        <div className="mb-4 space-y-3">
+          {/* Month hint if we jumped here from a specific grid cell */}
+          {detectedMonth && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white/70">
+              <Calendar className="w-4 h-4 text-white/50" />
+              <span>Adding <span className="font-semibold text-white">{new Date(detectedMonth + '-02').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span> statement</span>
+              <button
+                onClick={() => setDetectedMonth(null)}
+                className="ml-auto text-xs text-white/40 hover:text-white/70"
+              >
+                Change
+              </button>
+            </div>
+          )}
 
-          {/* Manual paste area */}
-          <div className="text-left mt-4">
-            <p className="text-xs text-white/40 mb-2">Or paste statement data:</p>
-            <textarea
-              placeholder={`Paste ${source.label} statement text here...`}
-              rows={6}
-              className="w-full px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white placeholder-white/20 focus:outline-none focus:border-white/20 resize-none font-mono"
-              onBlur={(e) => {
-                const text = e.target.value.trim();
-                if (!text) return;
-                // Basic line-by-line parsing for pasted data
-                // Each line: date | description | amount
-                const lines = text.split('\n').filter(l => l.trim());
-                const parsed = lines.map((line, i) => {
-                  const parts = line.split(/\t|  +/).map(p => p.trim());
-                  const amount = parseFloat((parts[parts.length - 1] || '').replace(/[$,]/g, '')) || 0;
-                  const date = parts[0] || '';
-                  const desc = parts.slice(1, -1).join(' ') || line;
-                  return {
-                    id: `paste-${Date.now()}-${i}`,
-                    description: desc,
-                    amount: Math.abs(amount),
-                    date: date,
-                    category: guessCategory(desc),
-                    vendor: '',
-                    propertyId: '',
-                    propertyName: '',
-                    sourceDocument: source.label,
-                    flowType: 'expense',
-                    selected: true,
-                  };
-                });
-                if (parsed.length > 0) setEntries(parsed);
-              }}
-            />
-          </div>
+          {/* Real drop zone — large, obvious, handles drag-drop + click-to-browse */}
+          {source.canParsePdf ? (
+            <div
+              onDragEnter={handleDragEnter}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleFileDrop(e, source.label)}
+              onClick={() => fileInputRef.current?.click()}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
+              className={`relative ${c.bg} border-4 border-dashed rounded-2xl p-10 text-center transition cursor-pointer ${
+                dragActive ? `${c.border} border-opacity-100 brightness-125 ring-4 ring-offset-0 ring-${source.color}-400/40` : `${c.border} hover:brightness-110`
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                className="hidden"
+                onChange={(e) => handleFileInput(e, source.label)}
+              />
+              {parsingPdf ? (
+                <>
+                  <Loader className={`w-12 h-12 ${c.text} mx-auto mb-3 animate-spin`} />
+                  <p className={`text-base font-semibold ${c.text} mb-1`}>Reading {uploadedFileName || 'your PDF'}…</p>
+                  <p className="text-xs text-white/40">This usually takes a couple of seconds.</p>
+                </>
+              ) : (
+                <>
+                  <Upload className={`w-12 h-12 ${c.text} mx-auto mb-3`} />
+                  <p className={`text-lg font-semibold ${c.text} mb-1`}>
+                    Drop the {source.label} PDF here
+                  </p>
+                  <p className="text-sm text-white/60 mb-3">
+                    …or click anywhere in this box to pick a file from your computer
+                  </p>
+                  <span className={`inline-flex items-center gap-2 px-4 py-2 ${c.accent} text-white rounded-xl text-sm font-medium`}>
+                    <Upload className="w-4 h-4" /> Choose PDF
+                  </span>
+                  {uploadedFileName && !parsingPdf && !parseError && (
+                    <p className="text-xs text-white/40 mt-3">Last file: {uploadedFileName}</p>
+                  )}
+                </>
+              )}
+            </div>
+          ) : (
+            <div className={`${c.bg} border-2 border-dashed ${c.border} rounded-2xl p-8 text-center`}>
+              <FileText className={`w-10 h-10 ${c.text} mx-auto mb-3 opacity-60`} />
+              <p className={`text-base font-semibold ${c.text} mb-1`}>{source.label} statements</p>
+              <p className="text-xs text-white/40 mb-2">
+                Automatic PDF reading isn&rsquo;t set up for this source yet — paste the statement text below and we&rsquo;ll parse it.
+              </p>
+            </div>
+          )}
+
+          {parseError && (
+            <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-xl">
+              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-300">{parseError}</p>
+            </div>
+          )}
+
+          {/* Collapsed paste fallback */}
+          <details className="group bg-white/[0.02] border border-white/10 rounded-xl">
+            <summary className="cursor-pointer list-none px-4 py-3 text-sm text-white/60 flex items-center justify-between hover:text-white/80">
+              <span>Or paste statement text instead</span>
+              <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="px-4 pb-4">
+              <textarea
+                placeholder={`Paste ${source.label} statement text here — one line per transaction (date, description, amount)`}
+                rows={6}
+                className="w-full px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white placeholder-white/20 focus:outline-none focus:border-white/20 resize-none font-mono"
+                onBlur={(e) => {
+                  const text = e.target.value.trim();
+                  if (!text) return;
+                  const lines = text.split('\n').filter(l => l.trim());
+                  const parsed = lines.map((line, i) => {
+                    const parts = line.split(/\t|  +/).map(p => p.trim());
+                    const amount = parseFloat((parts[parts.length - 1] || '').replace(/[$,]/g, '')) || 0;
+                    const date = parts[0] || '';
+                    const desc = parts.slice(1, -1).join(' ') || line;
+                    return {
+                      id: `paste-${Date.now()}-${i}`,
+                      description: desc,
+                      amount: Math.abs(amount),
+                      date: date,
+                      category: guessCategory(desc),
+                      vendor: '',
+                      propertyId: '',
+                      propertyName: '',
+                      sourceDocument: source.label,
+                      flowType: 'expense',
+                      selected: true,
+                    };
+                  });
+                  if (parsed.length > 0) setEntries(parsed);
+                }}
+              />
+              <p className="text-[11px] text-white/30 mt-2">
+                Tip: each line should look like <code className="text-white/50">2026-03-05 Vendor Name 123.45</code>
+              </p>
+            </div>
+          </details>
         </div>
       )}
 

@@ -27,3 +27,21 @@ body {
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+/*
+ * Large-text accessibility mode. When html.large-text is present, bump the base
+ * rem (which Tailwind sizes are derived from) so the whole UI grows proportionally.
+ * Also add a bit of extra button padding for easier targeting.
+ */
+html.large-text {
+  font-size: 18px;         /* default 16px → +12.5% */
+}
+html.large-text button,
+html.large-text input,
+html.large-text select,
+html.large-text textarea {
+  font-size: 1.02em;
+}
+html.large-text button {
+  min-height: 2.5rem;       /* easier tap target */
+}

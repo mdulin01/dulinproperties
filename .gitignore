@@ -5,3 +5,6 @@ dist
 .env*
 !.env.example
 vite.config.js.timestamp-*
+
+# Local owner/financial reports (contain tenant PII)
+reports/

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, X, Search, LogOut, User, Loader, MoreVertical, ChevronDown, ChevronRight, Edit3, Trash2, Eye, DollarSign, MapPin, Calendar, FileText, CheckSquare, Upload } from 'lucide-react';
+import { Plus, X, Search, LogOut, User, Loader, MoreVertical, ChevronDown, ChevronRight, Edit3, Trash2, Eye, DollarSign, MapPin, Calendar, FileText, CheckSquare, Upload, Type } from 'lucide-react';
 
 // Constants and utilities
 import {
@@ -43,7 +43,9 @@ import ReconcileModal from './components/Rent/ReconcileModal';
 // Expenses components
 import ExpensesList from './components/Expenses/ExpensesList';
 import AddExpenseModal from './components/Expenses/AddExpenseModal';
-import ExpenseReportUpload from './components/Expenses/ExpenseReportUpload';
+// NOTE: ExpenseReportUpload is legacy; the active import flow lives in DocumentImport under Documents > Import.
+// The "Import Report" button on the Expenses list now routes to Documents > Import.
+// Keeping the file in /components/Expenses so any in-flight references don't break.
 
 // Documents components
 import DocumentCard from './components/Documents/DocumentCard';
@@ -63,6 +65,7 @@ import { useDocuments } from './hooks/useDocuments';
 import { useFinancials } from './hooks/useFinancials';
 import { useRent } from './hooks/useRent';
 import { useExpenses, autoCreateRecurringExpenses, sanitizeForFirestore } from './hooks/useExpenses';
+import { useLargeText } from './hooks/useLargeText';
 
 // Contexts
 import { SharedHubProvider } from './contexts/SharedHubContext';
@@ -128,6 +131,9 @@ export default function DulinProperties() {
   // Search
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Large-text accessibility toggle (persists in localStorage)
+  const [largeText, toggleLargeText] = useLargeText();
 
   // Confirm dialog
   const [confirmDialog, setConfirmDialog] = useState(null);
@@ -206,8 +212,7 @@ export default function DulinProperties() {
   const [showPropertyBreakdown, setShowPropertyBreakdown] = useState(false);
   const [propertySortBy, setPropertySortBy] = useState('none');
 
-  // Expense report upload modal
-  const [showExpenseReportUpload, setShowExpenseReportUpload] = useState(false);
+  // (Legacy ExpenseReportUpload modal — now superseded by DocumentImport under Documents > Import)
   const [showPropertyImport, setShowPropertyImport] = useState(false);
 
   // Document viewer
@@ -965,10 +970,31 @@ export default function DulinProperties() {
               </nav>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={() => setShowSearch(!showSearch)} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center hover:bg-white/20 transition">
+              <button
+                onClick={toggleLargeText}
+                aria-label={largeText ? 'Turn off big text' : 'Turn on big text'}
+                aria-pressed={largeText}
+                title={largeText ? 'Big text is ON — click to shrink' : 'Make all text bigger'}
+                className={`w-9 h-9 rounded-xl flex items-center justify-center transition ${
+                  largeText ? 'bg-amber-500/30 ring-1 ring-amber-400/60' : 'bg-white/10 hover:bg-white/20'
+                }`}
+              >
+                <Type className={`w-4 h-4 ${largeText ? 'text-amber-200' : 'text-white/60'}`} />
+              </button>
+              <button
+                onClick={() => setShowSearch(!showSearch)}
+                aria-label="Search"
+                title="Search"
+                className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center hover:bg-white/20 transition"
+              >
                 <Search className="w-4 h-4 text-white/60" />
               </button>
-              <button onClick={handleLogout} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center hover:bg-white/20 transition">
+              <button
+                onClick={handleLogout}
+                aria-label="Sign out"
+                title="Sign out"
+                className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center hover:bg-white/20 transition"
+              >
                 <LogOut className="w-4 h-4 text-white/60" />
               </button>
             </div>
@@ -1658,6 +1684,11 @@ export default function DulinProperties() {
                   expenses={expenses}
                   properties={properties}
                   onAdd={() => setShowAddExpenseModal('create')}
+                  onImportReport={() => {
+                    // Imports live under Documents > Import — jump there
+                    setActiveSection('documents');
+                    setDocumentViewMode('import');
+                  }}
                   onEdit={(expense) => setShowAddExpenseModal(expense)}
                   onDelete={(expenseId) => {
                     setConfirmDialog({
@@ -1707,18 +1738,26 @@ export default function DulinProperties() {
               {activeSection === 'documents' && (
                 <div>
                   {/* Sub-nav */}
-                  <div className="flex gap-1.5 mb-4 items-center justify-between sticky top-[57px] z-20 bg-slate-900/95 backdrop-blur-md py-3 -mx-4 px-4">
-                    <div className="flex gap-1.5">
+                  <div className="flex gap-1.5 mb-4 items-center justify-between sticky top-[57px] z-20 bg-slate-900/95 backdrop-blur-md py-3 -mx-4 px-4 flex-wrap">
+                    <div className="flex gap-1.5 flex-wrap">
                       {[
-                        { id: 'import', emoji: '📥' },
-                        { id: 'byType', emoji: '📁' },
-                        { id: 'byProperty', emoji: '🏠' },
-                        { id: 'all', emoji: '📄' },
+                        { id: 'import', emoji: '📥', label: 'Import' },
+                        { id: 'byType', emoji: '📁', label: 'By Type' },
+                        { id: 'byProperty', emoji: '🏠', label: 'By Property' },
+                        { id: 'all', emoji: '📄', label: 'All' },
                       ].map(tab => (
-                        <button key={tab.id} onClick={() => setDocumentViewMode(tab.id)}
-                          className={`px-3 md:px-4 py-2 rounded-xl font-medium transition text-base md:text-lg text-center ${
+                        <button
+                          key={tab.id}
+                          onClick={() => setDocumentViewMode(tab.id)}
+                          aria-label={tab.label}
+                          title={tab.label}
+                          className={`flex items-center gap-1.5 px-3 md:px-4 py-2 rounded-xl font-medium transition text-sm md:text-base ${
                             documentViewMode === tab.id ? 'bg-amber-500 text-white shadow-lg' : 'bg-white/10 text-slate-300 hover:bg-white/20'
-                          }`}>{tab.emoji}</button>
+                          }`}
+                        >
+                          <span>{tab.emoji}</span>
+                          <span>{tab.label}</span>
+                        </button>
                       ))}
                     </div>
                     <button
@@ -1836,6 +1875,7 @@ export default function DulinProperties() {
                     <DocumentImport
                       properties={properties}
                       expenses={expenses}
+                      rentPayments={rentPayments}
                       addExpense={addExpense}
                       addRentPayment={addRentPayment}
                       showToast={showToast}
@@ -2435,68 +2475,7 @@ export default function DulinProperties() {
           />
         )}
 
-        {/* Expense Report Upload Modal */}
-        {showExpenseReportUpload && (
-          <ExpenseReportUpload
-            properties={properties}
-            onImport={async (items, file) => {
-              const incomeItems = items.filter(i => i.flowType === 'income');
-              const expenseItems = items.filter(i => i.flowType !== 'income');
-
-              // Route expenses → Expenses section
-              for (const item of expenseItems) {
-                addExpense({ ...item, id: Date.now().toString() + Math.random().toString(36).slice(2, 6), createdAt: new Date().toISOString(), createdBy: currentUser });
-                await new Promise(r => setTimeout(r, 50));
-              }
-
-              // Route income → Rent section
-              for (const item of incomeItems) {
-                const month = item.date ? item.date.substring(0, 7) : item.reportMonth || '';
-                addRentPayment({
-                  id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
-                  propertyId: item.propertyId || '',
-                  propertyName: item.propertyName || '',
-                  tenantName: item.vendor || '',
-                  month,
-                  amount: item.amount || 0,
-                  datePaid: item.date || '',
-                  status: 'paid',
-                  notes: item.notes || `Imported from owner packet (${item.reportMonth || ''})`,
-                  createdAt: new Date().toISOString(),
-                  createdBy: currentUser,
-                });
-                await new Promise(r => setTimeout(r, 50));
-              }
-
-              // Auto-store uploaded PDF in Documents
-              if (file) {
-                try {
-                  const fileUrl = await uploadPhoto(file, 'rentals/documents');
-                  const reportMonth = items[0]?.reportMonth || new Date().toISOString().substring(0, 7);
-                  addDocument({
-                    id: Date.now().toString(),
-                    title: file.name || 'Owner Packet',
-                    type: 'other',
-                    fileName: file.name || 'document.pdf',
-                    fileUrl,
-                    date: reportMonth + '-01',
-                    notes: 'Auto-saved from owner packet import',
-                    createdAt: new Date().toISOString(),
-                    createdBy: currentUser,
-                  });
-                } catch (err) {
-                  logger.error('Failed to auto-save PDF to documents:', err);
-                }
-              }
-
-              const parts = [];
-              if (expenseItems.length) parts.push(`${expenseItems.length} expense${expenseItems.length > 1 ? 's' : ''}`);
-              if (incomeItems.length) parts.push(`${incomeItems.length} rent payment${incomeItems.length > 1 ? 's' : ''}`);
-              showToast(`Imported ${parts.join(' and ')}${file ? ' (PDF saved to Documents)' : ''}`, 'success');
-            }}
-            onClose={() => setShowExpenseReportUpload(false)}
-          />
-        )}
+        {/* (Legacy ExpenseReportUpload modal removed — use Documents > Import) */}
 
         {/* Property Financial Breakdown Modal */}
         {showPropertyBreakdown && (
