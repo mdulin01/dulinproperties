@@ -1914,6 +1914,8 @@ export default function DulinProperties() {
                   addRentPayment={addRentPayment}
                   bulkAddExpenses={bulkAddExpenses}
                   bulkAddRentPayments={bulkAddRentPayments}
+                  bulkDeleteExpenses={bulkDeleteExpenses}
+                  bulkDeleteRentPayments={bulkDeleteRentPayments}
                   updateExpense={updateExpense}
                   deleteExpense={deleteExpense}
                   updateRentPayment={updateRentPayment}

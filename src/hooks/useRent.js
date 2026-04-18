@@ -47,15 +47,39 @@ export const useRent = (currentUser, saveRef, showToast, db = null) => {
     showToast('Payment deleted', 'info');
   }, [showToast]);
 
-  const bulkDeleteRentPayments = useCallback((ids) => {
-    const idSet = new Set(ids);
-    setRentPayments(prev => {
-      const updated = prev.filter(r => !idSet.has(r.id));
-      saveRef.current(updated);
-      return updated;
-    });
-    showToast(`${ids.length} payments deleted`, 'info');
-  }, [showToast]);
+  /** Atomic bulk delete. See bulkDeleteExpenses for the full rationale. */
+  const bulkDeleteRentPayments = useCallback(async (ids) => {
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return { ok: true, count: 0 };
+    }
+    if (!db) {
+      console.error('[rent] bulkDeleteRentPayments: no db');
+      return { ok: false, count: 0, error: 'no-db' };
+    }
+    const idSet = new Set(ids.map(String));
+    const docRef = doc(db, 'rentalData', 'rent');
+    try {
+      const remaining = await runTransaction(db, async (t) => {
+        const snap = await t.get(docRef);
+        const existing = snap.exists() ? (snap.data().payments || []) : [];
+        const next = existing.filter(r => !idSet.has(String(r.id)));
+        t.set(docRef, {
+          payments: sanitizeForFirestore(next),
+          lastUpdated: new Date().toISOString(),
+          updatedBy: currentUser || 'unknown',
+          saveId: `${Date.now()}-bulk-del-${Math.random().toString(36).slice(2, 6)}`,
+        }, { merge: true });
+        return next;
+      });
+      setRentPayments(remaining);
+      showToast(`${ids.length} payments deleted`, 'info');
+      return { ok: true, count: ids.length };
+    } catch (err) {
+      console.error('[rent] bulkDeleteRentPayments: FAILED', err);
+      showToast(`Failed to delete rent payments: ${err.message || 'unknown error'}`, 'error');
+      return { ok: false, count: 0, error: err.message };
+    }
+  }, [db, currentUser, showToast]);
 
   /**
    * Add many rent payments in ONE atomic Firestore write via runTransaction.

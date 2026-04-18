@@ -208,14 +208,43 @@ export const useExpenses = (db, currentUser, showToast) => {
     showToast('Expense deleted', 'info');
   }, [db, currentUser, showToast]);
 
-  const bulkDeleteExpenses = useCallback((expenseIds) => {
-    const idSet = new Set(expenseIds);
-    setExpenses(prev => {
-      const updated = prev.filter(e => !idSet.has(e.id));
-      saveExpensesDirect(db, updated, currentUser);
-      return updated;
-    });
-    showToast(`${expenseIds.length} expenses deleted`, 'info');
+  /**
+   * Delete many expenses atomically — runTransaction reads the current array
+   * from Firestore, removes every matching id, writes the result in one shot.
+   * Returns a promise so callers (e.g. the "Replace existing" button) can wait
+   * for the delete to commit before triggering a follow-up import.
+   */
+  const bulkDeleteExpenses = useCallback(async (expenseIds) => {
+    if (!Array.isArray(expenseIds) || expenseIds.length === 0) {
+      return { ok: true, count: 0 };
+    }
+    if (!db) {
+      console.error('[expenses] bulkDeleteExpenses: no db');
+      return { ok: false, count: 0, error: 'no-db' };
+    }
+    const idSet = new Set(expenseIds.map(String));
+    const docRef = doc(db, 'rentalData', 'expenses');
+    try {
+      const remaining = await runTransaction(db, async (t) => {
+        const snap = await t.get(docRef);
+        const existing = snap.exists() ? (snap.data().expenses || []) : [];
+        const next = existing.filter(e => !idSet.has(String(e.id)));
+        t.set(docRef, {
+          expenses: sanitizeForFirestore(next),
+          lastUpdated: new Date().toISOString(),
+          updatedBy: currentUser || 'unknown',
+          saveId: `${Date.now()}-bulk-del-${Math.random().toString(36).slice(2, 6)}`,
+        }, { merge: true });
+        return next;
+      });
+      setExpenses(remaining);
+      showToast(`${expenseIds.length} expenses deleted`, 'info');
+      return { ok: true, count: expenseIds.length };
+    } catch (err) {
+      console.error('[expenses] bulkDeleteExpenses: FAILED', err);
+      showToast(`Failed to delete expenses: ${err.message || 'unknown error'}`, 'error');
+      return { ok: false, count: 0, error: err.message };
+    }
   }, [db, currentUser, showToast]);
 
   /**

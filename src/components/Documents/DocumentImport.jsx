@@ -476,8 +476,10 @@ export default function DocumentImport({
   addExpense, addRentPayment,
   bulkAddExpenses, bulkAddRentPayments,
   deleteExpense, deleteRentPayment,
+  bulkDeleteExpenses, bulkDeleteRentPayments,
   showToast, onClose,
 }) {
+  const [replacingExisting, setReplacingExisting] = useState(false);
   const [activeSource, setActiveSource] = useState(null);
   const [entries, setEntries] = useState([]); // parsed entries for review
   const [importing, setImporting] = useState(false);
@@ -1146,25 +1148,41 @@ export default function DocumentImport({
                     )}
                   </div>
                 </div>
-                {existingSame > 0 && deleteExpense && deleteRentPayment && (
+                {existingSame > 0 && (bulkDeleteExpenses || deleteExpense) && (
                   <div className="flex items-center gap-2 mt-2 pl-6">
                     <button
-                      onClick={() => {
+                      disabled={replacingExisting}
+                      onClick={async () => {
                         if (!confirm(`Delete all ${existingSame} existing ${source.label} entries for ${ym || 'this month'} before importing? This cannot be undone.`)) return;
-                        // Collect IDs to delete first so iteration doesn't race with state updates
                         const expIds = (expenses || [])
                           .filter(e => e.sourceDocument === source.label && (e.date || '').slice(0, 7) === ym)
                           .map(e => e.id);
                         const rentIds = (rentPayments || [])
                           .filter(r => r.sourceDocument === source.label && ((r.month || (r.datePaid || '').slice(0, 7)) === ym))
                           .map(r => r.id);
-                        for (const id of expIds) deleteExpense(id);
-                        for (const id of rentIds) deleteRentPayment(id);
-                        showToast?.(`Removed ${expIds.length + rentIds.length} existing entries — you can now import fresh`, 'info');
+                        setReplacingExisting(true);
+                        try {
+                          // Prefer the new atomic bulk deletes; fall back to per-id loop only if missing.
+                          if (bulkDeleteExpenses) {
+                            await bulkDeleteExpenses(expIds);
+                          } else {
+                            for (const id of expIds) deleteExpense(id);
+                          }
+                          if (bulkDeleteRentPayments) {
+                            await bulkDeleteRentPayments(rentIds);
+                          } else {
+                            for (const id of rentIds) deleteRentPayment(id);
+                          }
+                          showToast?.(`Removed ${expIds.length + rentIds.length} existing entries — click Import Selected to add the new ones`, 'info');
+                        } finally {
+                          setReplacingExisting(false);
+                        }
                       }}
-                      className="px-3 py-1.5 bg-red-500/20 border border-red-500/40 text-red-200 rounded-lg text-xs font-medium hover:bg-red-500/30 transition"
+                      className="px-3 py-1.5 bg-red-500/20 border border-red-500/40 text-red-200 rounded-lg text-xs font-medium hover:bg-red-500/30 transition disabled:opacity-50"
                     >
-                      Replace existing ({existingSame}) — delete first, then import
+                      {replacingExisting
+                        ? 'Removing existing…'
+                        : `Replace existing (${existingSame}) — delete first, then import`}
                     </button>
                   </div>
                 )}

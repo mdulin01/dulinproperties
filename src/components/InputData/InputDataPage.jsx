@@ -25,6 +25,7 @@ export default function InputDataPage({
   // Mutations
   addExpense, addRentPayment, updateProperty,
   bulkAddExpenses, bulkAddRentPayments,
+  bulkDeleteExpenses, bulkDeleteRentPayments,
   updateExpense, deleteExpense,
   updateRentPayment, deleteRentPayment,
   // Modal launchers (for quick-add flows + validation edits)
@@ -80,6 +81,8 @@ export default function InputDataPage({
           addRentPayment={addRentPayment}
           bulkAddExpenses={bulkAddExpenses}
           bulkAddRentPayments={bulkAddRentPayments}
+          bulkDeleteExpenses={bulkDeleteExpenses}
+          bulkDeleteRentPayments={bulkDeleteRentPayments}
           deleteExpense={deleteExpense}
           deleteRentPayment={deleteRentPayment}
           showToast={showToast}
