@@ -144,21 +144,42 @@ function detectStatementPeriod(allText) {
   return null;
 }
 
+// Known management-company office addresses — these appear as letterhead on
+// some statement formats and must NOT be treated as property addresses.
+// Add more here if other packets are misclassified.
+const MGMT_OFFICE_ADDRESSES = [
+  /^750\s+n\.?\s+judge\s+ely/i, // Barnett & Hill, Abilene TX
+];
+
+function isMgmtOfficeAddress(text) {
+  return MGMT_OFFICE_ADDRESSES.some(re => re.test(text || ''));
+}
+
 /**
  * Extract property address from a detail page header.
  * Format is typically: "ADDRESS - Dulin - Full Address, City, State ZIP"
  * or just the address on a line by itself.
+ *
+ * `skipAddresses` (optional Set<string>) is a list of lowercase short-address
+ * strings to skip — used by the caller to exclude letterhead addresses that
+ * appear on every page.
  */
-function extractPropertyAddress(rows) {
+function extractPropertyAddress(rows, skipAddresses = new Set()) {
+  const shouldSkip = (shortAddr) => {
+    if (!shortAddr) return false;
+    if (skipAddresses.has(shortAddr.toLowerCase())) return true;
+    if (isMgmtOfficeAddress(shortAddr)) return true;
+    return false;
+  };
+
   for (let i = 0; i < Math.min(rows.length, 8); i++) {
     const text = rowToText(rows[i]);
     // Look for the property header pattern: "Address - Name - Full Address"
     const dashPattern = text.match(/^(.+?)\s*[-–]\s*\w+\s*[-–]\s*(.+)/);
     if (dashPattern) {
-      return {
-        shortAddress: dashPattern[1].trim(),
-        fullAddress: dashPattern[2].trim(),
-      };
+      const shortAddr = dashPattern[1].trim();
+      if (shouldSkip(shortAddr)) continue;
+      return { shortAddress: shortAddr, fullAddress: dashPattern[2].trim() };
     }
   }
 
@@ -166,18 +187,53 @@ function extractPropertyAddress(rows) {
   for (let i = 0; i < Math.min(rows.length, 6); i++) {
     const text = rowToText(rows[i]);
     if (/^\d+\s+\w/.test(text) && /(?:st|rd|ave|dr|ln|ct|blvd|way|pl|cir|loop|pkwy)/i.test(text)) {
-      return { shortAddress: text.split(/[-–,]/)[0].trim(), fullAddress: text };
+      const shortAddr = text.split(/[-–,]/)[0].trim();
+      if (shouldSkip(shortAddr)) continue;
+      return { shortAddress: shortAddr, fullAddress: text };
     }
   }
   return null;
 }
 
 /**
+ * Collect every address-looking line across all pages, then return the set of
+ * addresses that appear on more than half the pages. Those are letterhead
+ * (management-company office address) and must be skipped as property
+ * addresses.
+ */
+function detectLetterheadAddresses(allPageRows) {
+  const counts = {};
+  const totalPages = allPageRows.length;
+  for (const rows of allPageRows) {
+    const seenOnThisPage = new Set();
+    for (let i = 0; i < Math.min(rows.length, 8); i++) {
+      const text = rowToText(rows[i]);
+      const dashPattern = text.match(/^(.+?)\s*[-–]\s*\w+\s*[-–]\s*(.+)/);
+      if (dashPattern) {
+        const k = dashPattern[1].trim().toLowerCase();
+        if (!seenOnThisPage.has(k)) { seenOnThisPage.add(k); counts[k] = (counts[k] || 0) + 1; }
+        continue;
+      }
+      if (/^\d+\s+\w/.test(text) && /(?:st|rd|ave|dr|ln|ct|blvd|way|pl|cir|loop|pkwy)/i.test(text)) {
+        const k = text.split(/[-–,]/)[0].trim().toLowerCase();
+        if (!seenOnThisPage.has(k)) { seenOnThisPage.add(k); counts[k] = (counts[k] || 0) + 1; }
+      }
+    }
+  }
+  // Addresses appearing on > 50% of pages (and at least 3) are letterhead.
+  const skip = new Set();
+  for (const [k, c] of Object.entries(counts)) {
+    if (c >= 3 && c > totalPages / 2) skip.add(k);
+  }
+  return skip;
+}
+
+/**
  * Parse a single property detail page.
  * Returns { propertyAddress, cashSummary, transactions[] }
  */
-function parsePropertyPage(rows) {
-  const address = extractPropertyAddress(rows);
+function parsePropertyPage(rows, skipAddresses = new Set()) {
+  const address = extractPropertyAddress(rows, skipAddresses);
   const transactions = [];
   let inTransactionTable = false;
   let cashSummary = {};
@@ -465,6 +521,11 @@ export async function parseOwnerPacket(pdfData) {
   // Detect statement period from page 1
   const period = detectStatementPeriod(fullText);
 
+  // Find letterhead-like addresses that appear on many pages so parsePropertyPage
+  // doesn't misclassify them as the property address (e.g., Barnett & Hill's
+  // office address printed on every page of the Feb owner packet).
+  const letterhead = detectLetterheadAddresses(allPageRows);
+
   // Parse each page (skip page 1 = consolidated summary, unless only 1 page)
   const properties = [];
   const startPage = numPages > 1 ? 1 : 0; // 0-indexed
@@ -478,7 +539,7 @@ export async function parseOwnerPacket(pdfData) {
       continue;
     }
 
-    const result = parsePropertyPage(rows);
+    const result = parsePropertyPage(rows, letterhead);
     if (result.transactions.length > 0 || result.propertyAddress) {
       properties.push(result);
     }
