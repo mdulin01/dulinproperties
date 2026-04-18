@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import DocumentImport from '../Documents/DocumentImport';
+import ValidateTransactions from './ValidateTransactions';
 import ManagedRentals from './ManagedRentals';
 import PropertyInfo from './PropertyInfo';
 
 const TABS = [
   { id: 'statements', icon: '📥', label: 'Import Statements & Reports',
     hint: 'Drop in monthly PDFs from your management companies, bank, and credit cards.' },
+  { id: 'validate', icon: '✅', label: 'Data Validation',
+    hint: 'Review every imported entry and mark it validated, edit, or discard.' },
   { id: 'managed', icon: '🏠', label: 'Managed Rentals',
     hint: 'Record rents and expenses for the four properties you manage yourself.' },
   { id: 'info', icon: '🧾', label: 'Property Info',
@@ -21,8 +24,11 @@ export default function InputDataPage({
   properties, expenses, rentPayments, tenants,
   // Mutations
   addExpense, addRentPayment, updateProperty,
-  // Modal launchers (for quick-add flows)
+  updateExpense, deleteExpense,
+  updateRentPayment, deleteRentPayment,
+  // Modal launchers (for quick-add flows + validation edits)
   onAddRent, onAddExpense, onOpenProperty,
+  onEditExpense, onEditRent,
   // UI
   showToast,
 }) {
@@ -71,6 +77,21 @@ export default function InputDataPage({
           rentPayments={rentPayments}
           addExpense={addExpense}
           addRentPayment={addRentPayment}
+          showToast={showToast}
+        />
+      )}
+
+      {active === 'validate' && (
+        <ValidateTransactions
+          expenses={expenses}
+          rentPayments={rentPayments}
+          properties={properties}
+          updateExpense={updateExpense}
+          deleteExpense={deleteExpense}
+          updateRentPayment={updateRentPayment}
+          deleteRentPayment={deleteRentPayment}
+          onEditExpense={onEditExpense}
+          onEditRent={onEditRent}
           showToast={showToast}
         />
       )}

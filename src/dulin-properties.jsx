@@ -1904,7 +1904,7 @@ export default function DulinProperties() {
                 </div>
               )}
 
-              {/* ========== INPUT DATA SECTION (landing) — 3 tabs: Import / Managed Rentals / Property Info ========== */}
+              {/* ========== INPUT DATA SECTION (landing) — 4 tabs: Import / Validate / Managed / Property Info ========== */}
               {activeSection === 'input' && (
                 <InputDataPage
                   properties={properties}
@@ -1912,10 +1912,16 @@ export default function DulinProperties() {
                   rentPayments={rentPayments}
                   addExpense={addExpense}
                   addRentPayment={addRentPayment}
+                  updateExpense={updateExpense}
+                  deleteExpense={deleteExpense}
+                  updateRentPayment={updateRentPayment}
+                  deleteRentPayment={deleteRentPayment}
                   updateProperty={updateProperty}
                   showToast={showToast}
                   onAddRent={(p) => setShowAddRentModal({ propertyId: p.id, propertyName: p.name ? `${p.emoji || '🏠'} ${p.name}` : '' })}
                   onAddExpense={(p) => setShowAddExpenseModal({ propertyId: p.id, propertyName: p.name ? `${p.emoji || '🏠'} ${p.name}` : '' })}
+                  onEditExpense={(expense) => setShowAddExpenseModal(expense)}
+                  onEditRent={(payment) => setShowAddRentModal(payment)}
                   onOpenProperty={(p) => { setActiveSection('rentals'); setSelectedProperty(p); }}
                 />
               )}
