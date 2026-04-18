@@ -31,6 +31,7 @@ export default function ValidateTransactions({
   const [filterStatus, setFilterStatus] = useState('needs-review'); // needs-review | validated | all
   const [filterSource, setFilterSource] = useState('all'); // 'all' | <source label>
   const [filterMonth, setFilterMonth] = useState('all');   // 'all' | 'YYYY-MM'
+  const [filterProperty, setFilterProperty] = useState('all'); // 'all' | propertyName
   const [search, setSearch] = useState('');
   // Group key is `${source}|${ym}` so Dianne can review one statement at a time.
   const [expandedGroups, setExpandedGroups] = useState({});
@@ -94,6 +95,25 @@ export default function ValidateTransactions({
     const seen = new Set(allRows.map(r => r.ym).filter(Boolean));
     return [...seen].sort((a, b) => (a < b ? 1 : -1)); // newest first
   }, [allRows]);
+  // Property list — scoped by the active source + month filters so Dianne only
+  // sees properties that actually have entries in her current view. Sorted with
+  // unmatched (⚠️) addresses at the bottom.
+  const availableProperties = useMemo(() => {
+    const seen = new Set();
+    for (const r of allRows) {
+      if (filterSource !== 'all' && r.source !== filterSource) continue;
+      if (filterMonth !== 'all' && r.ym !== filterMonth) continue;
+      if (r.propertyName) seen.add(r.propertyName);
+    }
+    const arr = [...seen];
+    arr.sort((a, b) => {
+      const aUnm = a.startsWith('⚠️');
+      const bUnm = b.startsWith('⚠️');
+      if (aUnm !== bUnm) return aUnm ? 1 : -1;
+      return a.localeCompare(b);
+    });
+    return arr;
+  }, [allRows, filterSource, filterMonth]);
 
   // Per-dropdown-option counts so option labels can show "(N)" needs-review badges.
   const needsReviewBySource = useMemo(() => {
@@ -123,6 +143,7 @@ export default function ValidateTransactions({
       if (filterStatus === 'validated' && !r.validated) return false;
       if (filterSource !== 'all' && r.source !== filterSource) return false;
       if (filterMonth !== 'all' && r.ym !== filterMonth) return false;
+      if (filterProperty !== 'all' && r.propertyName !== filterProperty) return false;
       if (searchTerm) {
         const hay = [
           r.description, r.vendor, r.propertyName, r.category, r.source, r.notes,
@@ -132,7 +153,7 @@ export default function ValidateTransactions({
       }
       return true;
     });
-  }, [allRows, filterStatus, filterSource, filterMonth, searchTerm]);
+  }, [allRows, filterStatus, filterSource, filterMonth, filterProperty, searchTerm]);
 
   // Group by (source, month) so each group corresponds to exactly one statement.
   // Source goes first to match the "review one statement at a time" workflow.
@@ -341,6 +362,20 @@ export default function ValidateTransactions({
           </select>
         </div>
 
+        <div className="flex items-center gap-1.5">
+          <label className="text-[11px] uppercase tracking-wide text-white/40 font-semibold">Property</label>
+          <select
+            value={filterProperty}
+            onChange={(e) => setFilterProperty(e.target.value)}
+            className="bg-white/[0.06] border border-white/15 text-white text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-white/30 min-w-[160px] max-w-[240px]"
+          >
+            <option value="all">All properties</option>
+            {availableProperties.map(p => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        </div>
+
         <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/40" />
           <input
@@ -361,9 +396,9 @@ export default function ValidateTransactions({
           )}
         </div>
 
-        {(filterSource !== 'all' || filterMonth !== 'all' || search) && (
+        {(filterSource !== 'all' || filterMonth !== 'all' || filterProperty !== 'all' || search) && (
           <button
-            onClick={() => { setFilterSource('all'); setFilterMonth('all'); setSearch(''); }}
+            onClick={() => { setFilterSource('all'); setFilterMonth('all'); setFilterProperty('all'); setSearch(''); }}
             className="text-xs text-white/50 hover:text-white/90 underline-offset-4 hover:underline px-2 py-1.5"
           >
             Clear filters
