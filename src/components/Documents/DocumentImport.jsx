@@ -1197,15 +1197,22 @@ export default function DocumentImport({
       {/* Entries for review */}
       {entries.length > 0 && (
         <>
-          {/* Dedup + month-level warning. Counts existing records for the same month+source. */}
+          {/* Dedup + month-level warning. Counts existing records for the same month+source,
+              EXCLUDING records whose fingerprint matches the current review batch — otherwise
+              the banner re-fires after a successful import because the rows just written show
+              up as "existing entries for this month". */}
           {(() => {
             const ym = (entries.find(e => e.date)?.date || '').slice(0, 7) || detectedMonth;
-            const existingSame = (expenses || []).filter(e =>
-              e.sourceDocument === source.label && (e.date || '').slice(0, 7) === ym
-            ).length + (rentPayments || []).filter(r =>
-              r.sourceDocument === source.label &&
-              ((r.month || (r.datePaid || '').slice(0, 7)) === ym)
-            ).length;
+            const batchFps = new Set(entries.map(e => e.fingerprint).filter(Boolean));
+            const inMonthSource = (list, dateFn) =>
+              (list || []).filter(r =>
+                r.sourceDocument === source.label &&
+                dateFn(r) === ym &&
+                !(r.fingerprint && batchFps.has(r.fingerprint))
+              ).length;
+            const existingSame =
+              inMonthSource(expenses, e => (e.date || '').slice(0, 7)) +
+              inMonthSource(rentPayments, r => (r.month || (r.datePaid || '').slice(0, 7)));
             const dupCount = entries.filter(e => e.isDuplicate).length;
             if (existingSame === 0 && dupCount === 0) return null;
             return (
