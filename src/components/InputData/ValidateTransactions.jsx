@@ -6,6 +6,30 @@ import { formatCurrency } from '../../utils';
 const SOURCES = ['Barnett & Hill', 'Absolute', 'FFB Bank', 'Citi Card', 'Costco Card'];
 
 /**
+ * Single tab button used in the source + month filter strips. Shows a needs-review
+ * badge so Dianne can see at a glance which statement still has work in it.
+ */
+function TabBtn({ active, onClick, label, badge, small }) {
+  const size = small ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs';
+  const activeCls = active
+    ? 'bg-white/15 text-white border-white/20'
+    : 'bg-white/[0.03] text-white/60 border-white/10 hover:text-white/90 hover:bg-white/[0.08]';
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 rounded-lg border font-medium transition ${size} ${activeCls}`}
+    >
+      <span>{label}</span>
+      {badge > 0 && (
+        <span className={`inline-flex items-center justify-center rounded-full text-[10px] font-bold px-1.5 ${active ? 'bg-amber-400/30 text-amber-200' : 'bg-amber-500/20 text-amber-300'}`}>
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/**
  * ValidateTransactions — Dianne reviews every imported transaction and marks it validated,
  * edits it, or discards it. Grouped by month (newest first); filterable by status + source.
  *
@@ -26,7 +50,8 @@ export default function ValidateTransactions({
   showToast,
 }) {
   const [filterStatus, setFilterStatus] = useState('needs-review'); // needs-review | validated | all
-  const [filterSource, setFilterSource] = useState('all'); // all | <source label>
+  const [filterSource, setFilterSource] = useState('all'); // 'all' | <source label>
+  const [filterMonth, setFilterMonth] = useState('all');   // 'all' | 'YYYY-MM'
   // Group key is `${source}|${ym}` so Dianne can review one statement at a time.
   const [expandedGroups, setExpandedGroups] = useState({});
   const [confirmDiscard, setConfirmDiscard] = useState(null); // {kind, id, label}
@@ -79,15 +104,46 @@ export default function ValidateTransactions({
     return rows;
   }, [expenses, rentPayments]);
 
+  // Tab options — only show source/month values that have data. That way Dianne
+  // never sees a tab with nothing behind it.
+  const availableSources = useMemo(() => {
+    const seen = new Set(allRows.map(r => r.source).filter(Boolean));
+    return SOURCES.filter(s => seen.has(s)).concat([...seen].filter(s => !SOURCES.includes(s)));
+  }, [allRows]);
+  const availableMonths = useMemo(() => {
+    const seen = new Set(allRows.map(r => r.ym).filter(Boolean));
+    return [...seen].sort((a, b) => (a < b ? 1 : -1)); // newest first
+  }, [allRows]);
+
   // Apply filters
   const filtered = useMemo(() => {
     return allRows.filter(r => {
       if (filterStatus === 'needs-review' && r.validated) return false;
       if (filterStatus === 'validated' && !r.validated) return false;
       if (filterSource !== 'all' && r.source !== filterSource) return false;
+      if (filterMonth !== 'all' && r.ym !== filterMonth) return false;
       return true;
     });
-  }, [allRows, filterStatus, filterSource]);
+  }, [allRows, filterStatus, filterSource, filterMonth]);
+
+  // Per-tab counts so the tab labels can show a needs-review badge.
+  const needsReviewBySource = useMemo(() => {
+    const out = {};
+    for (const r of allRows) {
+      if (r.validated) continue;
+      out[r.source || ''] = (out[r.source || ''] || 0) + 1;
+    }
+    return out;
+  }, [allRows]);
+  const needsReviewByMonth = useMemo(() => {
+    const out = {};
+    for (const r of allRows) {
+      if (r.validated) continue;
+      if (filterSource !== 'all' && r.source !== filterSource) continue; // month badges honor source filter
+      out[r.ym || ''] = (out[r.ym || ''] || 0) + 1;
+    }
+    return out;
+  }, [allRows, filterSource]);
 
   // Group by (source, month) so each group corresponds to exactly one statement.
   // Source goes first to match the "review one statement at a time" workflow.
@@ -175,8 +231,8 @@ export default function ValidateTransactions({
         </p>
       </div>
 
-      {/* Stats + filters */}
-      <div className="flex flex-wrap items-center gap-3 mb-4 p-3 bg-white/[0.03] border border-white/10 rounded-2xl">
+      {/* Stats */}
+      <div className="flex flex-wrap items-center gap-3 mb-3 p-3 bg-white/[0.03] border border-white/10 rounded-2xl">
         <div className="flex items-center gap-1.5 text-sm">
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 font-semibold">
             <AlertCircle className="w-3.5 h-3.5" />
@@ -210,18 +266,47 @@ export default function ValidateTransactions({
               </button>
             ))}
           </div>
-          <select
-            value={filterSource}
-            onChange={(e) => setFilterSource(e.target.value)}
-            className="bg-white/10 border border-white/15 text-white text-xs rounded-lg px-2 py-1.5 focus:outline-none"
-          >
-            <option value="all">All sources</option>
-            {SOURCES.map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
         </div>
       </div>
+
+      {/* Source tabs — top level so Dianne can jump to one management company at a time. */}
+      {availableSources.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1 border-b border-white/10 pb-0.5">
+          <TabBtn active={filterSource === 'all'} onClick={() => setFilterSource('all')} label="All sources" badge={totals.needsReview} />
+          {availableSources.map(s => (
+            <TabBtn
+              key={s}
+              active={filterSource === s}
+              onClick={() => setFilterSource(s)}
+              label={s}
+              badge={needsReviewBySource[s] || 0}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Month tabs — second level, scoped by the active source tab. */}
+      {availableMonths.length > 0 && (
+        <div className="mb-4 flex flex-wrap gap-1">
+          <TabBtn
+            small
+            active={filterMonth === 'all'}
+            onClick={() => setFilterMonth('all')}
+            label="All months"
+            badge={Object.values(needsReviewByMonth).reduce((s, n) => s + n, 0)}
+          />
+          {availableMonths.map(m => (
+            <TabBtn
+              small
+              key={m}
+              active={filterMonth === m}
+              onClick={() => setFilterMonth(m)}
+              label={monthLabel(m)}
+              badge={needsReviewByMonth[m] || 0}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Empty states */}
       {allRows.length === 0 && (
