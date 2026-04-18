@@ -155,6 +155,17 @@ function isMgmtOfficeAddress(text) {
   return MGMT_OFFICE_ADDRESSES.some(re => re.test(text || ''));
 }
 
+// Known transaction-type keywords (lowercase). Used by parsePropertyPage to
+// identify the "Type" column and by continuation-line merging to catch type
+// keywords that wrap onto a second PDF row.
+const KNOWN_TYPES = [
+  'rent income', 'management fees', 'management fee',
+  'owner distribution', 'owner disbursement',
+  'bill', 'beginning cash balance', 'ending cash balance',
+  'deposit', 'credit', 'late fee', 'nsf fee', 'security deposit',
+  'prepaid rent', 'receipt',
+];
+
 /**
  * Extract property address from a detail page header.
  * Format is typically: "ADDRESS - Dulin - Full Address, City, State ZIP"
@@ -237,6 +248,10 @@ function parsePropertyPage(rows, skipAddresses = new Set()) {
   const transactions = [];
   let inTransactionTable = false;
   let cashSummary = {};
+  // lastTxRowIdx tracks the row index of the most recently parsed transaction so
+  // we can append continuation rows (long descriptions that wrap onto the next
+  // PDF line) to that transaction's description.
+  let lastTxRowIdx = -1;
 
   for (let i = 0; i < rows.length; i++) {
     const text = rowToText(rows[i]);
@@ -300,10 +315,28 @@ function parsePropertyPage(rows, skipAddresses = new Set()) {
     const isTransactionRow = date || /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(firstItem);
 
     if (!isTransactionRow) {
-      // Could be a continuation line or a balance row — check for amounts
+      // Balance rows — skip.
       if (hasMoneyAmount(text) &&
           (textLower.includes('beginning cash') || textLower.includes('ending cash'))) {
-        continue; // skip balance rows
+        continue;
+      }
+      // Continuation line: no date at the start, no money amounts, still inside
+      // the transaction table, and there IS a preceding transaction on this page.
+      // The Absolute owner packet wraps long descriptions (e.g. "Management Fees
+      // for 03/2026") onto a second line — without this merge the type/category
+      // keywords live on an orphan row and get thrown away.
+      if (lastTxRowIdx >= 0 && text && !hasMoneyAmount(text) && transactions.length > 0) {
+        const prev = transactions[transactions.length - 1];
+        prev.description = prev.description
+          ? `${prev.description} ${text}`.trim()
+          : text;
+        // Also update the raw "type" field if the continuation text contains a
+        // known type keyword and we didn't catch one earlier.
+        if (!prev.type) {
+          for (const kt of KNOWN_TYPES) {
+            if (text.toLowerCase().includes(kt)) { prev.type = kt; break; }
+          }
+        }
       }
       continue;
     }
@@ -330,12 +363,9 @@ function parsePropertyPage(rows, skipAddresses = new Set()) {
     // The non-amount items (excluding date) give us text fields
     const textParts = nonAmountItems.filter(item => item.text !== firstItem);
 
-    // Known transaction types — used to detect the "Type" column
-    const knownTypes = [
-      'rent income', 'management fees', 'bill', 'owner distribution',
-      'beginning cash balance', 'ending cash balance', 'deposit', 'credit',
-      'late fee', 'nsf fee', 'security deposit', 'prepaid rent'
-    ];
+    // Use the module-level KNOWN_TYPES so continuation-line merging sees the
+    // same list.
+    const knownTypes = KNOWN_TYPES;
 
     // Separate: payee (first non-date text), type, reference, description
     let type = '';
@@ -445,6 +475,7 @@ function parsePropertyPage(rows, skipAddresses = new Set()) {
       cashOut: Math.abs(cashOut),
       balance,
     });
+    lastTxRowIdx = i;
   }
 
   return {
