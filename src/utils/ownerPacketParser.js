@@ -493,6 +493,7 @@ function categorizeTransaction(tx) {
 
   const rules = [
     // Income categories
+    [['prepaid rent'], 'prepaid-rent'],
     [['rent income', 'rent payment', 'monthly rent'], 'rent'],
     [['late fee', 'late charge'], 'late-fee'],
     [['security deposit', 'deposit refund'], 'deposit'],

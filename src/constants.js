@@ -9,7 +9,6 @@ export const ownerEmails = [
   'jdulin07@gmail.com',
   'dulinliam@gmail.com',
   'mdulin@gmail.com',
-  'jochum.alex@gmail.com',
 ];
 
 // Display name mapping
@@ -18,7 +17,6 @@ export const ownerDisplayNames = {
   'jdulin07': 'Jeff',
   'dulinliam': 'Liam',
   'mdulin': 'Mike',
-  'jochum.alex': 'Alex',
 };
 
 // Expense report categories for uploaded management company reports
@@ -156,6 +154,7 @@ export const MILEAGE_RATE = 0.70;
 // Income categories
 export const incomeCategories = [
   { value: 'rent', label: 'Rent', emoji: '💰' },
+  { value: 'prepaid-rent', label: 'Prepaid Rent', emoji: '📅' },
   { value: 'late-fee', label: 'Late Fee', emoji: '⏰' },
   { value: 'deposit', label: 'Security Deposit', emoji: '🔒' },
   { value: 'refund', label: 'Refund', emoji: '↩️' },
