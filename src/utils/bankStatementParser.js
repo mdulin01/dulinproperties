@@ -235,6 +235,18 @@ function parseRow(row, statementYear, sourceKind) {
   let description = descParts.join(' ').trim();
   // Strip common noise suffixes
   description = description.replace(/\s+(BALANCE|BAL)\s*$/i, '').trim();
+
+  // Reject likely BALANCE-SUMMARY rows. The FFB statement prints a daily
+  // running balance (e.g. "03/05  $157,762.94" with no payee) — without this
+  // guard those become huge fake expenses that explode the dashboard total.
+  // A row qualifies as a balance row when it has NO descriptive text AND
+  // either the row text contains the word "balance" or the lone amount is
+  // large (≥ $5,000) and there's only one money column.
+  const noDescription = !description;
+  const lineHasBalanceWord = /\bbalance\b/i.test(lineText);
+  if (noDescription && (lineHasBalanceWord || (amounts.length === 1 && amounts[0].value >= 5000))) {
+    return null;
+  }
   if (!description) description = '(no description)';
 
   // Amount: prefer the LEFTMOST money token that isn't a running balance.
