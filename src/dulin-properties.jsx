@@ -1234,6 +1234,14 @@ export default function DulinProperties() {
 
                     const reportData = mgrOrder.map(mgr => {
                       const mgrProps = properties.filter(p => getManager(p.color) === mgr);
+                      // For managed-company groups (Absolute, B&H) the property row shows
+                      // ONLY what came through that statement. Owner-paid items (FFB, Citi,
+                      // Costco) appear in the expandable "Owner Paid" row beneath the
+                      // group, never inside the property row — otherwise mom sees an FFB
+                      // Lowes bill listed under Absolute and gets confused.
+                      // Self-managed (Dianne) has no statement, so its property rows show
+                      // everything.
+                      const isSelfManaged = mgr === 'Dianne Dulin';
                       const propRows = mgrProps.map(p => {
                         const pid = String(p.id);
                         const rent = monthRent.filter(r => String(r.propertyId) === pid).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
@@ -1242,48 +1250,66 @@ export default function DulinProperties() {
                         const ownerExp = pExp.filter(e => !isManagedExpense(e));
                         const managed = sumExpenses(managedExp);
                         const owner = sumExpenses(ownerExp);
-                        // Total = managed + owner (for display)
+                        // Visible row totals — managed-only for B&H/Absolute, combined for self-managed.
+                        const view = isSelfManaged ? {
+                          mgmtFee: managed.mgmtFee + owner.mgmtFee,
+                          repairs: managed.repairs + owner.repairs,
+                          supplies: managed.supplies + owner.supplies,
+                          utilities: managed.utilities + owner.utilities,
+                          dist: managed.dist + owner.dist,
+                        } : managed;
                         return {
                           name: `${p.emoji || '🏠'} ${p.name}`, rent,
-                          mgmtFee: managed.mgmtFee + owner.mgmtFee, repairs: managed.repairs + owner.repairs,
-                          supplies: managed.supplies + owner.supplies, utilities: managed.utilities + owner.utilities,
-                          dist: managed.dist + owner.dist,
-                          // Separate owner-paid totals
+                          mgmtFee: view.mgmtFee, repairs: view.repairs,
+                          supplies: view.supplies, utilities: view.utilities,
+                          dist: view.dist,
+                          // Separate owner-paid totals (still tracked for the "Owner Paid" row).
                           ownerMgmtFee: owner.mgmtFee, ownerRepairs: owner.repairs,
                           ownerSupplies: owner.supplies, ownerUtilities: owner.utilities, ownerDist: owner.dist,
                         };
                       });
 
-                      const totals = propRows.reduce((t, r) => ({
-                        rent: t.rent + r.rent, mgmtFee: t.mgmtFee + r.mgmtFee, repairs: t.repairs + r.repairs,
-                        supplies: t.supplies + r.supplies, utilities: t.utilities + r.utilities, dist: t.dist + r.dist,
-                      }), { rent: 0, mgmtFee: 0, repairs: 0, supplies: 0, utilities: 0, dist: 0 });
+                      // Compute managed + owner subtotals from raw filtered expenses so
+                      // we don't have to back them out of the propRows view totals.
+                      const groupExp = monthExp.filter(e =>
+                        mgrProps.some(p => String(p.id) === String(e.propertyId))
+                      );
+                      const groupRent = monthRent
+                        .filter(r => mgrProps.some(p => String(p.id) === String(r.propertyId)))
+                        .reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+                      const groupManaged = sumExpenses(groupExp.filter(isManagedExpense));
+                      const groupOwner = sumExpenses(groupExp.filter(e => !isManagedExpense(e)));
 
-                      // Owner-paid subtotals
-                      const ownerTotals = propRows.reduce((t, r) => ({
-                        mgmtFee: t.mgmtFee + r.ownerMgmtFee, repairs: t.repairs + r.ownerRepairs,
-                        supplies: t.supplies + r.ownerSupplies, utilities: t.utilities + r.ownerUtilities, dist: t.dist + r.ownerDist,
-                      }), { mgmtFee: 0, repairs: 0, supplies: 0, utilities: 0, dist: 0 });
-
-                      // Managed-only subtotals (for reconciliation)
-                      const managedTotals = {
-                        rent: totals.rent,
-                        mgmtFee: totals.mgmtFee - ownerTotals.mgmtFee,
-                        repairs: totals.repairs - ownerTotals.repairs,
-                        supplies: totals.supplies - ownerTotals.supplies,
-                        utilities: totals.utilities - ownerTotals.utilities,
-                        dist: totals.dist - ownerTotals.dist,
+                      // Group-level "totals" = what mom expects to see for the row totals.
+                      // Self-managed group includes everything; statement groups exclude
+                      // owner-paid (those are shown in the Owner Paid row).
+                      const totals = {
+                        rent: groupRent,
+                        mgmtFee: isSelfManaged ? groupManaged.mgmtFee + groupOwner.mgmtFee : groupManaged.mgmtFee,
+                        repairs: isSelfManaged ? groupManaged.repairs + groupOwner.repairs : groupManaged.repairs,
+                        supplies: isSelfManaged ? groupManaged.supplies + groupOwner.supplies : groupManaged.supplies,
+                        utilities: isSelfManaged ? groupManaged.utilities + groupOwner.utilities : groupManaged.utilities,
+                        dist: isSelfManaged ? groupManaged.dist + groupOwner.dist : groupManaged.dist,
                       };
-
+                      const ownerTotals = { ...groupOwner };
+                      // Managed-only is what came through this manager's statement.
+                      const managedTotals = { rent: groupRent, ...groupManaged };
                       const hasOwnerExpenses = Object.values(ownerTotals).some(v => v > 0);
 
                       return { manager: mgr, props: propRows, totals, ownerTotals, managedTotals, hasOwnerExpenses };
                     });
 
+                    // Grand total should include EVERYTHING (managed + owner-paid) so
+                    // mom's bottom-line month total isn't artificially low. Property
+                    // rows for B&H/Absolute show only managed; we add owner-paid back
+                    // into the grand total here.
                     const grandTotal = reportData.reduce((t, g) => ({
-                      rent: t.rent + g.totals.rent, mgmtFee: t.mgmtFee + g.totals.mgmtFee,
-                      repairs: t.repairs + g.totals.repairs, supplies: t.supplies + g.totals.supplies,
-                      utilities: t.utilities + g.totals.utilities, dist: t.dist + g.totals.dist,
+                      rent: t.rent + g.totals.rent,
+                      mgmtFee: t.mgmtFee + g.totals.mgmtFee + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.mgmtFee),
+                      repairs: t.repairs + g.totals.repairs + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.repairs),
+                      supplies: t.supplies + g.totals.supplies + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.supplies),
+                      utilities: t.utilities + g.totals.utilities + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.utilities),
+                      dist: t.dist + g.totals.dist + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.dist),
                     }), { rent: 0, mgmtFee: 0, repairs: 0, supplies: 0, utilities: 0, dist: 0 });
 
                     return (
