@@ -44,7 +44,28 @@ const CATEGORY_TO_LINE = {
   'hoa':               { line: 19, label: 'Other (HOA)' },
   'software':          { line: 19, label: 'Other (Software)' },
   'other':             { line: 19, label: 'Other' },
+
+  // Business-wide operating expenses (op-*). These are not tied to a single
+  // property; they get allocated pro-rata across properties below.
+  'op-software':        { line: 19, label: 'Other (Software)' },
+  'op-internet':        { line: 17, label: 'Utilities' },
+  'op-home-office':     { line: 19, label: 'Other (Home office)' },
+  'op-accounting':      { line: 10, label: 'Legal and other professional fees' },
+  'op-subscriptions':   { line: 19, label: 'Other (Subscriptions)' },
+  'op-office-supplies': { line: 15, label: 'Supplies' },
+  'op-education':       { line: 19, label: 'Other (Education)' },
+  'op-travel':          { line: 6,  label: 'Auto and travel' },
+  'op-phone':           { line: 17, label: 'Utilities' },
+  'op-marketing':       { line: 5,  label: 'Advertising' },
+  'op-bank-fees':       { line: 19, label: 'Other (Bank fees)' },
+  'op-other':           { line: 19, label: 'Other' },
 };
+
+const OP_CATEGORIES = new Set([
+  'op-software', 'op-internet', 'op-home-office', 'op-accounting',
+  'op-subscriptions', 'op-office-supplies', 'op-education', 'op-travel',
+  'op-phone', 'op-marketing', 'op-bank-fees', 'op-other',
+]);
 
 // Lines 5–19 are expenses; Line 3 is income. This is the render order for the table.
 const LINE_ORDER = [
@@ -134,10 +155,11 @@ export default function ScheduleE({ properties, expenses, rentPayments, onClose 
       row.lineSources[3].add(rp.category || 'rent');
     }
 
-    // Expenses
+    // Property-tied expenses (skip distributions and business op-* — those are handled separately below).
     for (const e of expenses || []) {
       if ((e.date || '').slice(0, 4) !== yearStr) continue;
       if (e.category === 'owner-distribution') continue; // distributions are not Schedule E expenses
+      if (OP_CATEGORIES.has(e.category)) continue; // allocated pro-rata after this loop
       const amt = parseFloat(e.amount) || 0;
       if (!amt) continue;
       const { line } = mapCategoryToLine(e.category);
@@ -145,6 +167,53 @@ export default function ScheduleE({ properties, expenses, rentPayments, onClose 
       row.lines[line] = (row.lines[line] || 0) + amt;
       if (!row.lineSources[line]) row.lineSources[line] = new Set();
       row.lineSources[line].add(e.category || 'other');
+    }
+
+    // Business-wide operating expenses — allocate pro-rata across properties by gross rent share.
+    // If no property has rent this year, fall back to even split across listed properties.
+    const propertyRows = Object.values(acc);
+    const totalRent = propertyRows.reduce((s, r) => s + (r.lines[3] || 0), 0);
+    const eligibleRows = totalRent > 0
+      ? propertyRows.filter(r => (r.lines[3] || 0) > 0)
+      : propertyRows;
+
+    if (eligibleRows.length > 0) {
+      for (const e of expenses || []) {
+        if ((e.date || '').slice(0, 4) !== yearStr) continue;
+        if (!OP_CATEGORIES.has(e.category)) continue;
+        const amt = parseFloat(e.amount) || 0;
+        if (!amt) continue;
+        const { line } = mapCategoryToLine(e.category);
+
+        // Compute share per eligible property.
+        let allocated = 0;
+        eligibleRows.forEach((r, idx) => {
+          const share = totalRent > 0
+            ? (r.lines[3] || 0) / totalRent
+            : 1 / eligibleRows.length;
+          // Round to cents, give the last row the remainder so the total reconciles.
+          const portion = idx === eligibleRows.length - 1
+            ? Math.round((amt - allocated) * 100) / 100
+            : Math.round(amt * share * 100) / 100;
+          allocated += portion;
+          if (!portion) return;
+          r.lines[line] = (r.lines[line] || 0) + portion;
+          if (!r.lineSources[line]) r.lineSources[line] = new Set();
+          r.lineSources[line].add(`${e.category} (allocated)`);
+        });
+      }
+    } else {
+      // No properties to allocate against — dump on unassigned so the amount isn't lost.
+      for (const e of expenses || []) {
+        if ((e.date || '').slice(0, 4) !== yearStr) continue;
+        if (!OP_CATEGORIES.has(e.category)) continue;
+        const amt = parseFloat(e.amount) || 0;
+        if (!amt) continue;
+        const { line } = mapCategoryToLine(e.category);
+        unassigned.lines[line] = (unassigned.lines[line] || 0) + amt;
+        if (!unassigned.lineSources[line]) unassigned.lineSources[line] = new Set();
+        unassigned.lineSources[line].add(`${e.category} (unallocated)`);
+      }
     }
 
     // Return array (only rows with any data + any property that has an address — keep all

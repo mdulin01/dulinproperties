@@ -13,9 +13,15 @@ const PropertyFinancialBreakdownModal = ({ properties, rentPayments, expenses, o
 
   const currentYear = new Date().getFullYear();
 
-  // Separate operating expenses from property expenses
+  // Separate operating expenses from property expenses.
+  // Also exclude owner-distribution — disbursements are not a real expense
+  // (they're just the owner's own money being paid back out), so they must
+  // not count against a property's YTD expenses or profit.
   const nonOperatingExpenses = useMemo(() =>
-    (expenses || []).filter(e => !OPERATING_CATEGORY_VALUES.has(e.category)),
+    (expenses || []).filter(e =>
+      !OPERATING_CATEGORY_VALUES.has(e.category) &&
+      e.category !== 'owner-distribution'
+    ),
     [expenses]
   );
 

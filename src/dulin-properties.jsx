@@ -5,7 +5,8 @@ import { Plus, X, Search, LogOut, User, Loader, MoreVertical, ChevronDown, Chevr
 import {
   ownerEmails, ownerDisplayNames, propertyTypes, propertyColors, documentTypes,
   expenseCategories, incomeCategories, taskPriorities, timeHorizons,
-  listCategories, ideaCategories, tenantStatuses, rentStatuses
+  listCategories, ideaCategories, tenantStatuses, rentStatuses,
+  operatingExpenseCategories, OPERATING_CATEGORY_VALUES
 } from './constants';
 import {
   formatDate, formatCurrency, validateFileSize, isHeicFile, getSafeFileName,
@@ -1083,7 +1084,8 @@ export default function DulinProperties() {
                     // Helper: check if expense is a distribution
                     const isDistribution = (e) => e.category === 'owner-distribution';
                     const isMgmtFee = (e) => e.category === 'management-fee';
-                    const isOperatingExpense = (e) => !isDistribution(e) && !isMgmtFee(e);
+                    const isBusinessOp = (e) => OPERATING_CATEGORY_VALUES.has(e.category);
+                    const isPropertyExpense = (e) => !isDistribution(e) && !isMgmtFee(e) && !isBusinessOp(e);
 
                     // YTD rent income (only paid)
                     const ytdRent = rentPayments
@@ -1094,9 +1096,10 @@ export default function DulinProperties() {
                     const regularExpenses = expenses.filter(e => !e.isTemplate);
                     const ytdAll = regularExpenses.filter(e => (e.date || '').startsWith(yearStr));
                     const ytdMgmtFees = ytdAll.filter(isMgmtFee).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
-                    const ytdOpEx = ytdAll.filter(isOperatingExpense).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                    const ytdPropertyExp = ytdAll.filter(isPropertyExpense).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                    const ytdBusinessOpEx = ytdAll.filter(isBusinessOp).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                     const ytdDistributions = ytdAll.filter(isDistribution).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
-                    const ytdTotalExpenses = ytdMgmtFees + ytdOpEx; // distributions excluded
+                    const ytdTotalExpenses = ytdMgmtFees + ytdPropertyExp + ytdBusinessOpEx; // distributions excluded
                     const ytdNet = ytdRent - ytdTotalExpenses;
 
                     // Management company mapping
@@ -1158,7 +1161,7 @@ export default function DulinProperties() {
                             <p className="text-[10px] font-semibold text-red-400/70 uppercase tracking-wider mb-1">YTD Expenses</p>
                             <p className="text-xl font-bold text-red-400">{formatCurrency(ytdTotalExpenses)}</p>
                             <p className="text-[9px] text-white/30 mt-1">
-                              Mgmt: {formatCurrency(ytdMgmtFees)} · OpEx: {formatCurrency(ytdOpEx)}
+                              Mgmt: {formatCurrency(ytdMgmtFees)} · Prop: {formatCurrency(ytdPropertyExp)} · Biz: {formatCurrency(ytdBusinessOpEx)}
                             </p>
                           </div>
                           <div className={`${ytdNet >= 0 ? 'bg-teal-500/10 border-teal-500/20' : 'bg-orange-500/10 border-orange-500/20'} border rounded-2xl p-4 text-center`}>
@@ -1172,6 +1175,106 @@ export default function DulinProperties() {
                         </div>
 
                       </>
+                    );
+                  })()}
+
+                  {/* Business Operating Expenses — overhead not tied to a specific property */}
+                  {(() => {
+                    const yearStr = String(new Date().getFullYear());
+                    const opAll = (expenses || [])
+                      .filter(e => !e.isTemplate && OPERATING_CATEGORY_VALUES.has(e.category))
+                      .filter(e => (e.date || '').startsWith(yearStr));
+
+                    if (opAll.length === 0) {
+                      return (
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-6">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-sm font-semibold text-white/80">💼 Business Operating Expenses</h3>
+                            <span className="text-[10px] text-white/40 uppercase tracking-wider">{yearStr} YTD</span>
+                          </div>
+                          <p className="text-xs text-white/40">
+                            Owner-paid overhead (bookkeeping, software, office supplies, etc.) — none recorded this year yet.
+                            Use the <span className="text-white/60">+ Add expense</span> button on Data Validation and pick an Operating category.
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    // Totals by category
+                    const byCat = {};
+                    opAll.forEach(e => {
+                      byCat[e.category] = (byCat[e.category] || 0) + (parseFloat(e.amount) || 0);
+                    });
+                    const ytdOpTotal = Object.values(byCat).reduce((a, b) => a + b, 0);
+                    const catRows = operatingExpenseCategories
+                      .map(c => ({ ...c, amount: byCat[c.value] || 0 }))
+                      .filter(c => c.amount > 0)
+                      .sort((a, b) => b.amount - a.amount);
+                    const maxCatAmount = catRows[0]?.amount || 1;
+
+                    // Monthly trend (Jan..Dec for current year)
+                    const monthly = Array.from({ length: 12 }, (_, i) => {
+                      const ms = `${yearStr}-${String(i + 1).padStart(2, '0')}`;
+                      const amount = opAll
+                        .filter(e => (e.date || '').startsWith(ms))
+                        .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                      const label = new Date(parseInt(yearStr), i).toLocaleString('en-US', { month: 'short' });
+                      return { ms, label, amount };
+                    });
+                    const maxMonthAmount = Math.max(1, ...monthly.map(m => m.amount));
+
+                    return (
+                      <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-6">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-sm font-semibold text-white/80">💼 Business Operating Expenses</h3>
+                          <div className="text-right">
+                            <p className="text-[10px] text-white/40 uppercase tracking-wider">{yearStr} YTD</p>
+                            <p className="text-lg font-bold text-amber-400">{formatCurrency(ytdOpTotal)}</p>
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-white/40 mb-4">
+                          Owner-paid overhead (bookkeeping, software, office supplies, etc.) — allocated pro-rata across properties on Schedule E.
+                        </p>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                          {/* By category */}
+                          <div>
+                            <p className="text-[10px] font-semibold text-white/50 uppercase tracking-wider mb-2">By Category</p>
+                            <div className="space-y-2">
+                              {catRows.map(c => (
+                                <div key={c.value}>
+                                  <div className="flex items-center justify-between text-xs mb-1">
+                                    <span className="text-white/70">{c.emoji} {c.label}</span>
+                                    <span className="text-white/80 font-medium">{formatCurrency(c.amount)}</span>
+                                  </div>
+                                  <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full bg-amber-400/70 rounded-full"
+                                      style={{ width: `${(c.amount / maxCatAmount) * 100}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Monthly trend */}
+                          <div>
+                            <p className="text-[10px] font-semibold text-white/50 uppercase tracking-wider mb-2">Monthly Trend</p>
+                            <div className="flex items-end gap-1 h-32">
+                              {monthly.map(m => (
+                                <div key={m.ms} className="flex-1 flex flex-col items-center justify-end h-full" title={`${m.label}: ${formatCurrency(m.amount)}`}>
+                                  <div
+                                    className={`w-full rounded-t ${m.amount > 0 ? 'bg-amber-400/70 hover:bg-amber-400' : 'bg-white/5'} transition-colors`}
+                                    style={{ height: `${(m.amount / maxMonthAmount) * 100}%`, minHeight: m.amount > 0 ? '2px' : '0' }}
+                                  />
+                                  <span className="text-[9px] text-white/40 mt-1">{m.label[0]}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     );
                   })()}
 
