@@ -1129,7 +1129,7 @@ export default function DulinProperties() {
 
                       const monthExps = regularExpenses.filter(e => (e.date || '').startsWith(monthStr));
                       const mgmt = monthExps.filter(isMgmtFee).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
-                      const opex = monthExps.filter(isOperatingExpense).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                      const opex = monthExps.filter(isPropertyExpense).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                       const dist = monthExps.filter(isDistribution).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                       const totalExp = mgmt + opex;
 
@@ -1140,7 +1140,7 @@ export default function DulinProperties() {
                         const inMgr = (id) => mgrPropIds.includes(String(id || ''));
                         const mIncome = monthRent.filter(r => inMgr(r.propertyId)).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
                         const mMgmt = monthExps.filter(e => isMgmtFee(e) && inMgr(e.propertyId)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                        const mOpex = monthExps.filter(e => isOperatingExpense(e) && inMgr(e.propertyId)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                        const mOpex = monthExps.filter(e => isPropertyExpense(e) && inMgr(e.propertyId)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                         const mDist = monthExps.filter(e => isDistribution(e) && inMgr(e.propertyId)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                         const mTotalExp = mMgmt + mOpex;
                         return { manager: mgr, income: mIncome, mgmt: mMgmt, opex: mOpex, dist: mDist, expenses: mTotalExp, net: mIncome - mTotalExp };
