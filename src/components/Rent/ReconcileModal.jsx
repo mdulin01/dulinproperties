@@ -50,7 +50,7 @@ export default function ReconcileModal({ month, monthLabel, reportData, mgrEmoji
     reportData.forEach(group => {
       const mgr = group.manager;
       const fd = formData[mgr] || {};
-      const dashboardTotal = group.totals.rent - group.totals.mgmtFee - group.totals.repairs - group.totals.supplies - group.totals.utilities;
+      const dashboardTotal = group.totals.rent - group.totals.mgmtFee - group.totals.repairs - group.totals.supplies - group.totals.utilities - (group.totals.hoa || 0) - (group.totals.other || 0);
       const statementVal = fd.statementTotal === '' ? null : parseFloat(fd.statementTotal);
       const autoMatch = statementVal !== null ? Math.abs(statementVal - dashboardTotal) < 0.01 : null;
 
@@ -102,7 +102,7 @@ export default function ReconcileModal({ month, monthLabel, reportData, mgrEmoji
             const colorClass = gc.split(' ')[0];
 
             // Net income = rent - expenses (what the owner should receive before dist)
-            const dashboardTotal = group.totals.rent - group.totals.mgmtFee - group.totals.repairs - group.totals.supplies - group.totals.utilities;
+            const dashboardTotal = group.totals.rent - group.totals.mgmtFee - group.totals.repairs - group.totals.supplies - group.totals.utilities - (group.totals.hoa || 0) - (group.totals.other || 0);
             const statementVal = fd.statementTotal === '' ? null : parseFloat(fd.statementTotal);
             const autoMatch = statementVal !== null ? Math.abs(statementVal - dashboardTotal) < 0.01 : null;
             const isReconciled = fd.confirmed || autoMatch === true;
@@ -157,6 +157,14 @@ export default function ReconcileModal({ month, monthLabel, reportData, mgrEmoji
                   <div className="flex justify-between">
                     <span className="text-white/40">Utilities</span>
                     <span className="text-orange-400/60">-{formatCurrency(group.totals.utilities)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/40">HOA</span>
+                    <span className="text-cyan-400/60">-{formatCurrency(group.totals.hoa || 0)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/40">Other</span>
+                    <span className="text-rose-400/60">-{formatCurrency(group.totals.other || 0)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-white/40">Owner Dist</span>

@@ -1326,13 +1326,28 @@ export default function DulinProperties() {
                       return false;
                     };
 
-                    // Compute totals for a set of expenses
+                    // Compute totals for a set of expenses.
+                    // Bucketing for the Monthly Report columns:
+                    //   Manage Fee = management-fee
+                    //   Repairs    = repair + plumbing + electrical + hvac + appliance + maintenance
+                    //   Supplies   = supplies + cleaning + pest-control + landscaping
+                    //   Utilities  = utilities + internet
+                    //   HOA        = hoa
+                    //   Other      = insurance + mortgage + mortgage-interest + taxes + property-tax
+                    //                + legal + software + mileage + other
+                    //                (anything property-tied that isn't already counted above and isn't a disbursement)
+                    const REPAIRS_CATS  = ['repair', 'plumbing', 'electrical', 'hvac', 'appliance', 'maintenance'];
+                    const SUPPLIES_CATS = ['supplies', 'cleaning', 'pest-control', 'landscaping'];
+                    const UTIL_CATS     = ['utilities', 'internet'];
+                    const OTHER_CATS    = ['insurance', 'mortgage', 'mortgage-interest', 'taxes', 'property-tax', 'legal', 'software', 'mileage', 'other'];
                     const sumExpenses = (exps) => ({
-                      mgmtFee: exps.filter(e => e.category === 'management-fee').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
-                      repairs: exps.filter(e => ['repair', 'plumbing', 'electrical', 'hvac', 'appliance'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
-                      supplies: exps.filter(e => ['cleaning', 'pest-control', 'landscaping'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
-                      utilities: exps.filter(e => ['utilities', 'internet'].includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
-                      dist: exps.filter(e => e.category === 'owner-distribution').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
+                      mgmtFee:   exps.filter(e => e.category === 'management-fee').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
+                      repairs:   exps.filter(e => REPAIRS_CATS.includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
+                      supplies:  exps.filter(e => SUPPLIES_CATS.includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
+                      utilities: exps.filter(e => UTIL_CATS.includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
+                      hoa:       exps.filter(e => e.category === 'hoa').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
+                      other:     exps.filter(e => OTHER_CATS.includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
+                      dist:      exps.filter(e => e.category === 'owner-distribution').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
                     });
 
                     const reportData = mgrOrder.map(mgr => {
@@ -1355,20 +1370,25 @@ export default function DulinProperties() {
                         const owner = sumExpenses(ownerExp);
                         // Visible row totals — managed-only for B&H/Absolute, combined for self-managed.
                         const view = isSelfManaged ? {
-                          mgmtFee: managed.mgmtFee + owner.mgmtFee,
-                          repairs: managed.repairs + owner.repairs,
-                          supplies: managed.supplies + owner.supplies,
+                          mgmtFee:   managed.mgmtFee   + owner.mgmtFee,
+                          repairs:   managed.repairs   + owner.repairs,
+                          supplies:  managed.supplies  + owner.supplies,
                           utilities: managed.utilities + owner.utilities,
-                          dist: managed.dist + owner.dist,
+                          hoa:       managed.hoa       + owner.hoa,
+                          other:     managed.other     + owner.other,
+                          dist:      managed.dist      + owner.dist,
                         } : managed;
                         return {
                           name: `${p.emoji || '🏠'} ${p.name}`, rent,
                           mgmtFee: view.mgmtFee, repairs: view.repairs,
                           supplies: view.supplies, utilities: view.utilities,
+                          hoa: view.hoa, other: view.other,
                           dist: view.dist,
                           // Separate owner-paid totals (still tracked for the "Owner Paid" row).
                           ownerMgmtFee: owner.mgmtFee, ownerRepairs: owner.repairs,
-                          ownerSupplies: owner.supplies, ownerUtilities: owner.utilities, ownerDist: owner.dist,
+                          ownerSupplies: owner.supplies, ownerUtilities: owner.utilities,
+                          ownerHoa: owner.hoa, ownerOther: owner.other,
+                          ownerDist: owner.dist,
                         };
                       });
 
@@ -1388,11 +1408,13 @@ export default function DulinProperties() {
                       // owner-paid (those are shown in the Owner Paid row).
                       const totals = {
                         rent: groupRent,
-                        mgmtFee: isSelfManaged ? groupManaged.mgmtFee + groupOwner.mgmtFee : groupManaged.mgmtFee,
-                        repairs: isSelfManaged ? groupManaged.repairs + groupOwner.repairs : groupManaged.repairs,
-                        supplies: isSelfManaged ? groupManaged.supplies + groupOwner.supplies : groupManaged.supplies,
+                        mgmtFee:   isSelfManaged ? groupManaged.mgmtFee   + groupOwner.mgmtFee   : groupManaged.mgmtFee,
+                        repairs:   isSelfManaged ? groupManaged.repairs   + groupOwner.repairs   : groupManaged.repairs,
+                        supplies:  isSelfManaged ? groupManaged.supplies  + groupOwner.supplies  : groupManaged.supplies,
                         utilities: isSelfManaged ? groupManaged.utilities + groupOwner.utilities : groupManaged.utilities,
-                        dist: isSelfManaged ? groupManaged.dist + groupOwner.dist : groupManaged.dist,
+                        hoa:       isSelfManaged ? groupManaged.hoa       + groupOwner.hoa       : groupManaged.hoa,
+                        other:     isSelfManaged ? groupManaged.other     + groupOwner.other     : groupManaged.other,
+                        dist:      isSelfManaged ? groupManaged.dist      + groupOwner.dist      : groupManaged.dist,
                       };
                       const ownerTotals = { ...groupOwner };
                       // Managed-only is what came through this manager's statement.
@@ -1407,13 +1429,15 @@ export default function DulinProperties() {
                     // rows for B&H/Absolute show only managed; we add owner-paid back
                     // into the grand total here.
                     const grandTotal = reportData.reduce((t, g) => ({
-                      rent: t.rent + g.totals.rent,
-                      mgmtFee: t.mgmtFee + g.totals.mgmtFee + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.mgmtFee),
-                      repairs: t.repairs + g.totals.repairs + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.repairs),
-                      supplies: t.supplies + g.totals.supplies + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.supplies),
+                      rent:      t.rent      + g.totals.rent,
+                      mgmtFee:   t.mgmtFee   + g.totals.mgmtFee   + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.mgmtFee),
+                      repairs:   t.repairs   + g.totals.repairs   + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.repairs),
+                      supplies:  t.supplies  + g.totals.supplies  + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.supplies),
                       utilities: t.utilities + g.totals.utilities + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.utilities),
-                      dist: t.dist + g.totals.dist + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.dist),
-                    }), { rent: 0, mgmtFee: 0, repairs: 0, supplies: 0, utilities: 0, dist: 0 });
+                      hoa:       t.hoa       + g.totals.hoa       + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.hoa),
+                      other:     t.other     + g.totals.other     + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.other),
+                      dist:      t.dist      + g.totals.dist      + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.dist),
+                    }), { rent: 0, mgmtFee: 0, repairs: 0, supplies: 0, utilities: 0, hoa: 0, other: 0, dist: 0 });
 
                     return (
                       <div className="bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden mb-6">
@@ -1466,13 +1490,15 @@ export default function DulinProperties() {
                         </div>
 
                         {/* Column headers — matches mom's spreadsheet */}
-                        <div className="grid grid-cols-8 gap-1 px-4 py-2 text-[9px] font-semibold text-white/30 uppercase tracking-wider border-b border-white/5">
+                        <div className="grid grid-cols-10 gap-1 px-4 py-2 text-[9px] font-semibold text-white/30 uppercase tracking-wider border-b border-white/5">
                           <span className="col-span-2">Property</span>
                           <span className="text-right">Rent Paid</span>
                           <span className="text-right">Manage. Fee</span>
                           <span className="text-right">Repairs</span>
                           <span className="text-right">Supplies</span>
                           <span className="text-right">Utilities</span>
+                          <span className="text-right">HOA</span>
+                          <span className="text-right">Other</span>
                           <span className="text-right">Owner Dist.</span>
                         </div>
 
@@ -1496,34 +1522,38 @@ export default function DulinProperties() {
                               </div>
                               {/* Property rows — all properties shown */}
                               {group.props.map((row, ri) => (
-                                <div key={ri} className="grid grid-cols-8 gap-1 px-4 py-1.5 border-b border-white/[0.03] hover:bg-white/[0.02]">
+                                <div key={ri} className="grid grid-cols-10 gap-1 px-4 py-1.5 border-b border-white/[0.03] hover:bg-white/[0.02]">
                                   <span className="col-span-2 text-xs text-white/70 truncate">{row.name}</span>
                                   <span className="text-xs text-right text-emerald-400/80">{row.rent > 0 ? formatCurrency(row.rent) : '—'}</span>
                                   <span className="text-xs text-right text-yellow-400/60">{row.mgmtFee > 0 ? formatCurrency(row.mgmtFee) : '—'}</span>
                                   <span className="text-xs text-right text-red-400/60">{row.repairs > 0 ? formatCurrency(row.repairs) : '—'}</span>
                                   <span className="text-xs text-right text-amber-400/60">{row.supplies > 0 ? formatCurrency(row.supplies) : '—'}</span>
                                   <span className="text-xs text-right text-orange-400/60">{row.utilities > 0 ? formatCurrency(row.utilities) : '—'}</span>
+                                  <span className="text-xs text-right text-cyan-400/60">{row.hoa > 0 ? formatCurrency(row.hoa) : '—'}</span>
+                                  <span className="text-xs text-right text-rose-400/60">{row.other > 0 ? formatCurrency(row.other) : '—'}</span>
                                   <span className="text-xs text-right text-blue-400/60">{row.dist > 0 ? formatCurrency(row.dist) : '—'}</span>
                                 </div>
                               ))}
                               {/* Manager subtotal (statement/managed expenses only) */}
-                              <div className={`grid grid-cols-8 gap-1 px-4 py-2 border-b border-white/5 ${(reconciliations[selectedMonth]?.[group.manager]?.confirmed || reconciliations[selectedMonth]?.[group.manager]?.autoMatch) ? 'bg-green-500/[0.06]' : 'bg-white/[0.02]'}`}>
+                              <div className={`grid grid-cols-10 gap-1 px-4 py-2 border-b border-white/5 ${(reconciliations[selectedMonth]?.[group.manager]?.confirmed || reconciliations[selectedMonth]?.[group.manager]?.autoMatch) ? 'bg-green-500/[0.06]' : 'bg-white/[0.02]'}`}>
                                 <span className="col-span-2 text-xs font-semibold text-white/50 uppercase underline decoration-white/20 underline-offset-2">Subtotal</span>
                                 <span className="text-xs text-right font-semibold text-emerald-400/70">{group.managedTotals.rent > 0 ? <span className="inline-block border border-emerald-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.rent)}</span> : '—'}</span>
                                 <span className="text-xs text-right font-semibold text-yellow-400/50">{group.managedTotals.mgmtFee > 0 ? <span className="inline-block border border-yellow-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.mgmtFee)}</span> : '—'}</span>
                                 <span className="text-xs text-right font-semibold text-red-400/50">{group.managedTotals.repairs > 0 ? <span className="inline-block border border-red-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.repairs)}</span> : '—'}</span>
                                 <span className="text-xs text-right font-semibold text-amber-400/50">{group.managedTotals.supplies > 0 ? <span className="inline-block border border-amber-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.supplies)}</span> : '—'}</span>
                                 <span className="text-xs text-right font-semibold text-orange-400/50">{group.managedTotals.utilities > 0 ? <span className="inline-block border border-orange-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.utilities)}</span> : '—'}</span>
+                                <span className="text-xs text-right font-semibold text-cyan-400/50">{group.managedTotals.hoa > 0 ? <span className="inline-block border border-cyan-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.hoa)}</span> : '—'}</span>
+                                <span className="text-xs text-right font-semibold text-rose-400/50">{group.managedTotals.other > 0 ? <span className="inline-block border border-rose-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.other)}</span> : '—'}</span>
                                 <span className="text-xs text-right font-semibold text-blue-400/50">{group.managedTotals.dist > 0 ? <span className="inline-block border border-blue-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.dist)}</span> : '—'}</span>
                               </div>
                               {/* Owner-paid expenses row — shown for managed groups, expandable */}
                               {group.manager !== 'Dianne Dulin' && (() => {
                                 const isOwnerExpanded = expandedOwnerPaid[group.manager];
-                                const ownerPropRows = group.props.filter(r => r.ownerRepairs > 0 || r.ownerSupplies > 0 || r.ownerUtilities > 0 || r.ownerMgmtFee > 0 || r.ownerDist > 0);
+                                const ownerPropRows = group.props.filter(r => r.ownerRepairs > 0 || r.ownerSupplies > 0 || r.ownerUtilities > 0 || r.ownerMgmtFee > 0 || r.ownerHoa > 0 || r.ownerOther > 0 || r.ownerDist > 0);
                                 return (
                                   <>
                                     <div
-                                      className={`grid grid-cols-8 gap-1 px-4 py-1.5 border-b border-white/5 ${group.hasOwnerExpenses ? 'cursor-pointer hover:bg-white/[0.02] transition' : ''}`}
+                                      className={`grid grid-cols-10 gap-1 px-4 py-1.5 border-b border-white/5 ${group.hasOwnerExpenses ? 'cursor-pointer hover:bg-white/[0.02] transition' : ''}`}
                                       onClick={() => { if (group.hasOwnerExpenses) setExpandedOwnerPaid(prev => ({ ...prev, [group.manager]: !prev[group.manager] })); }}
                                     >
                                       <span className="col-span-2 text-xs font-semibold text-amber-400/60 uppercase flex items-center gap-1">
@@ -1537,18 +1567,22 @@ export default function DulinProperties() {
                                       <span className="text-xs text-right text-red-400/40">{group.ownerTotals.repairs > 0 ? formatCurrency(group.ownerTotals.repairs) : '—'}</span>
                                       <span className="text-xs text-right text-amber-400/40">{group.ownerTotals.supplies > 0 ? formatCurrency(group.ownerTotals.supplies) : '—'}</span>
                                       <span className="text-xs text-right text-orange-400/40">{group.ownerTotals.utilities > 0 ? formatCurrency(group.ownerTotals.utilities) : '—'}</span>
+                                      <span className="text-xs text-right text-cyan-400/40">{group.ownerTotals.hoa > 0 ? formatCurrency(group.ownerTotals.hoa) : '—'}</span>
+                                      <span className="text-xs text-right text-rose-400/40">{group.ownerTotals.other > 0 ? formatCurrency(group.ownerTotals.other) : '—'}</span>
                                       <span className="text-xs text-right text-blue-400/40">{group.ownerTotals.dist > 0 ? formatCurrency(group.ownerTotals.dist) : '—'}</span>
                                     </div>
                                     {isOwnerExpanded && ownerPropRows.length > 0 && (
                                       <div>
                                         {ownerPropRows.map((row, ri) => (
-                                          <div key={ri} className="grid grid-cols-8 gap-1 px-4 py-1 pl-8 border-b border-white/[0.02]">
+                                          <div key={ri} className="grid grid-cols-10 gap-1 px-4 py-1 pl-8 border-b border-white/[0.02]">
                                             <span className="col-span-2 text-xs text-amber-400/50 truncate">{row.name}</span>
                                             <span className="text-xs text-right text-white/15">—</span>
                                             <span className="text-xs text-right text-yellow-400/30">{row.ownerMgmtFee > 0 ? formatCurrency(row.ownerMgmtFee) : '—'}</span>
                                             <span className="text-xs text-right text-red-400/30">{row.ownerRepairs > 0 ? formatCurrency(row.ownerRepairs) : '—'}</span>
                                             <span className="text-xs text-right text-amber-400/30">{row.ownerSupplies > 0 ? formatCurrency(row.ownerSupplies) : '—'}</span>
                                             <span className="text-xs text-right text-orange-400/30">{row.ownerUtilities > 0 ? formatCurrency(row.ownerUtilities) : '—'}</span>
+                                            <span className="text-xs text-right text-cyan-400/30">{row.ownerHoa > 0 ? formatCurrency(row.ownerHoa) : '—'}</span>
+                                            <span className="text-xs text-right text-rose-400/30">{row.ownerOther > 0 ? formatCurrency(row.ownerOther) : '—'}</span>
                                             <span className="text-xs text-right text-blue-400/30">{row.ownerDist > 0 ? formatCurrency(row.ownerDist) : '—'}</span>
                                           </div>
                                         ))}
@@ -1562,13 +1596,15 @@ export default function DulinProperties() {
                         })}
 
                         {/* Grand total */}
-                        <div className="grid grid-cols-8 gap-1 px-4 py-3 bg-white/[0.04] border-t border-white/10">
+                        <div className="grid grid-cols-10 gap-1 px-4 py-3 bg-white/[0.04] border-t border-white/10">
                           <span className="col-span-2 text-xs font-bold text-white">{isYtd ? 'YTD Total' : 'Month Total'}</span>
                           <span className="text-xs text-right font-bold text-emerald-400">{formatCurrency(grandTotal.rent)}</span>
                           <span className="text-xs text-right font-bold text-yellow-400/70">{formatCurrency(grandTotal.mgmtFee)}</span>
                           <span className="text-xs text-right font-bold text-red-400">{formatCurrency(grandTotal.repairs)}</span>
                           <span className="text-xs text-right font-bold text-amber-400">{formatCurrency(grandTotal.supplies)}</span>
                           <span className="text-xs text-right font-bold text-orange-400">{formatCurrency(grandTotal.utilities)}</span>
+                          <span className="text-xs text-right font-bold text-cyan-400">{formatCurrency(grandTotal.hoa)}</span>
+                          <span className="text-xs text-right font-bold text-rose-400">{formatCurrency(grandTotal.other)}</span>
                           <span className="text-xs text-right font-bold text-blue-400">{formatCurrency(grandTotal.dist)}</span>
                         </div>
                       </div>
