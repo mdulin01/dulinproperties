@@ -98,6 +98,7 @@ export default function InputDataPage({
           properties={properties}
           bulkAddRentPayments={bulkAddRentPayments}
           bulkDeleteExpenses={bulkDeleteExpenses}
+          bulkDeleteRentPayments={bulkDeleteRentPayments}
           bulkUpdateExpenses={bulkUpdateExpenses}
           bulkUpdateRentPayments={bulkUpdateRentPayments}
           updateExpense={updateExpense}

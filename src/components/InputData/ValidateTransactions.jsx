@@ -24,6 +24,7 @@ export default function ValidateTransactions({
   properties,
   bulkAddRentPayments,
   bulkDeleteExpenses,
+  bulkDeleteRentPayments,
   bulkUpdateExpenses,
   bulkUpdateRentPayments,
   updateExpense,
@@ -49,6 +50,8 @@ export default function ValidateTransactions({
   const [migrating, setMigrating] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [dedupOpen, setDedupOpen] = useState(false);
+  const [deduping, setDeduping] = useState(false);
 
   // Detect expense rows with an income category — these are rent rows that
   // were filed into the expenses collection by the old parser. The migration
@@ -89,6 +92,30 @@ export default function ValidateTransactions({
   [rentPayments, propertyNameById]);
 
   const totalMisNamed = misNamedExpenses.length + misNamedRents.length;
+
+  // Detect rent payment duplicates created by the rent-income migration.
+  // A migrated entry has notes starting with "Migrated from mis-tagged expense".
+  // It's a duplicate if there's another rent payment in the SAME property +
+  // SAME month with an amount within $50 (handles prorated cases like $725 vs
+  // $728.33). The migrated one is the one we want to delete.
+  const dupMigratedRents = useMemo(() => {
+    const migrated = (rentPayments || []).filter(r =>
+      (r.notes || '').toLowerCase().startsWith('migrated from mis-tagged expense')
+    );
+    const dups = [];
+    for (const m of migrated) {
+      const others = (rentPayments || []).filter(r =>
+        r.id !== m.id &&
+        String(r.propertyId) === String(m.propertyId) &&
+        (r.month || r.datePaid || '').startsWith((m.month || m.datePaid || '').slice(0, 7)) &&
+        Math.abs((parseFloat(r.amount) || 0) - (parseFloat(m.amount) || 0)) < 50
+      );
+      if (others.length > 0) {
+        dups.push({ migrated: m, originals: others });
+      }
+    }
+    return dups;
+  }, [rentPayments]);
 
   const runMigration = async () => {
     if (!bulkAddRentPayments || !bulkDeleteExpenses) {
@@ -179,6 +206,34 @@ export default function ValidateTransactions({
       showToast?.(`Rename error: ${err.message || 'unknown'}`, 'error');
     } finally {
       setRenaming(false);
+    }
+  };
+
+  // Deletes the migrated-from-expense rent entries when a pre-existing rent
+  // payment already covers the same property + month. Only deletes the
+  // migrated ones — never the original rent records.
+  const runDedup = async () => {
+    if (!bulkDeleteRentPayments) {
+      showToast?.('Dedup not available — bulkDeleteRentPayments not connected.', 'error');
+      return;
+    }
+    if (deduping) return;
+    setDeduping(true);
+    try {
+      const ids = dupMigratedRents.map(d => d.migrated.id).filter(Boolean);
+      const res = await bulkDeleteRentPayments(ids);
+      if (!res?.ok) {
+        showToast?.(`Dedup failed: ${res?.error || 'unknown'}`, 'error');
+        setDeduping(false);
+        return;
+      }
+      showToast?.(`Removed ${ids.length} duplicate rent payments.`, 'success');
+      setDedupOpen(false);
+    } catch (err) {
+      console.error('[dedup-rent] failed:', err);
+      showToast?.(`Dedup error: ${err.message || 'unknown'}`, 'error');
+    } finally {
+      setDeduping(false);
     }
   };
 
@@ -372,6 +427,77 @@ export default function ValidateTransactions({
 
   return (
     <div>
+      {/* Dedup banner — surfaces rent payments created by the rent-income
+          migration that duplicate a pre-existing rent payment. */}
+      {dupMigratedRents.length > 0 && bulkDeleteRentPayments && (
+        <div className="mb-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4">
+          <div className="flex items-start gap-3">
+            <ArrowRightLeft className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-rose-100">
+                {dupMigratedRents.length} duplicate rent payments from migration
+              </p>
+              <p className="text-xs text-rose-200/70 mt-0.5">
+                Rent was already in the system for these property-months. Removes the migrated copies, keeps the originals.
+              </p>
+              <button
+                onClick={() => setDedupOpen(true)}
+                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500 hover:bg-rose-400 text-rose-950 text-xs font-semibold transition"
+              >
+                Review &amp; remove duplicates →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dedupOpen && (
+        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !deduping && setDedupOpen(false)} />
+          <div className="relative w-full max-w-3xl bg-slate-800 border border-white/10 rounded-t-3xl md:rounded-3xl p-6 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-white">Remove Duplicate Rent Payments</h2>
+                <p className="text-xs text-white/40">{dupMigratedRents.length} migrated entries will be deleted; originals stay.</p>
+              </div>
+              <button onClick={() => !deduping && setDedupOpen(false)} disabled={deduping} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 disabled:opacity-50">
+                <X className="w-4 h-4 text-white/60" />
+              </button>
+            </div>
+            <div className="border border-white/10 rounded-lg overflow-hidden mb-4 max-h-96 overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-white/[0.04] sticky top-0">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-white/50 font-medium">Property</th>
+                    <th className="text-left px-3 py-2 text-white/50 font-medium">Month</th>
+                    <th className="text-left px-3 py-2 text-red-300 font-medium">Delete (migrated)</th>
+                    <th className="text-left px-3 py-2 text-emerald-300 font-medium">Keep (original)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dupMigratedRents.map((d, i) => (
+                    <tr key={i} className="border-t border-white/5">
+                      <td className="px-3 py-1.5 text-white/70 truncate max-w-[180px]">{d.migrated.propertyName || '—'}</td>
+                      <td className="px-3 py-1.5 text-white/60 whitespace-nowrap">{(d.migrated.month || d.migrated.datePaid || '').slice(0, 7)}</td>
+                      <td className="px-3 py-1.5 text-red-300/80">{d.migrated.tenantName || '—'} · ${(parseFloat(d.migrated.amount) || 0).toFixed(2)}</td>
+                      <td className="px-3 py-1.5 text-emerald-300/80">
+                        {d.originals.map(o => `${o.tenantName || '—'} · $${(parseFloat(o.amount) || 0).toFixed(2)}`).join(', ')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setDedupOpen(false)} disabled={deduping} className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/70 text-sm font-medium disabled:opacity-50">Cancel</button>
+              <button onClick={runDedup} disabled={deduping} className="px-4 py-2 rounded-lg bg-rose-500 hover:bg-rose-400 text-rose-950 text-sm font-bold disabled:opacity-50">
+                {deduping ? 'Removing…' : `Delete ${dupMigratedRents.length} duplicates`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Property-rename banner — surfaces transactions whose denormalized
           propertyName is out of sync with the canonical property record. */}
       {totalMisNamed > 0 && bulkUpdateExpenses && bulkUpdateRentPayments && (
