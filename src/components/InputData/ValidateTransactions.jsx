@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Check, Edit3, Trash2, AlertCircle, ChevronDown, ChevronRight, FileText, CheckCheck, Filter, Search, X, Plus } from 'lucide-react';
 import HelpTip from '../HelpTip';
-import { formatCurrency } from '../../utils';
+import { formatCurrency, parseAmountQuery, matchesAmountQuery } from '../../utils';
 
 const SOURCES = ['Barnett & Hill', 'Absolute', 'FFB Bank', 'Citi Card', 'Costco Card'];
 
@@ -136,7 +136,10 @@ export default function ValidateTransactions({
 
   // Apply filters. Search is a case-insensitive substring match against
   // description, vendor, property name, category, source, or the amount.
+  // Amount matching is robust: "$1,234.56" → 1234.56; "1234" matches any
+  // amount whose dollar part is 1234; "1234.56" requires an exact-cents match.
   const searchTerm = search.trim().toLowerCase();
+  const searchAmount = parseAmountQuery(search);
   const filtered = useMemo(() => {
     return allRows.filter(r => {
       if (filterStatus === 'needs-review' && r.validated) return false;
@@ -146,14 +149,15 @@ export default function ValidateTransactions({
       if (filterProperty !== 'all' && r.propertyName !== filterProperty) return false;
       if (searchTerm) {
         const hay = [
-          r.description, r.vendor, r.propertyName, r.category, r.source, r.notes,
-          String(r.amount), r.date,
+          r.description, r.vendor, r.propertyName, r.category, r.source, r.notes, r.date,
         ].filter(Boolean).join(' ').toLowerCase();
-        if (!hay.includes(searchTerm)) return false;
+        const textMatches = hay.includes(searchTerm);
+        const amtMatches = searchAmount !== null && matchesAmountQuery(r.amount, searchAmount, search);
+        if (!textMatches && !amtMatches) return false;
       }
       return true;
     });
-  }, [allRows, filterStatus, filterSource, filterMonth, filterProperty, searchTerm]);
+  }, [allRows, filterStatus, filterSource, filterMonth, filterProperty, searchTerm, searchAmount, search]);
 
   // Group by (source, month) so each group corresponds to exactly one statement.
   // Source goes first to match the "review one statement at a time" workflow.

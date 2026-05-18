@@ -17,8 +17,41 @@ export const formatDate = (dateStr) => {
 };
 
 export const formatCurrency = (amount) => {
-  if (amount === null || amount === undefined) return '$0';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
+  if (amount === null || amount === undefined) return '$0.00';
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
+};
+
+// Parses a search query into an amount (or null). Accepts "$1,234.56", "1234.56",
+// "1234", ".50", etc. Returns the numeric value or null if not parseable.
+export const parseAmountQuery = (q) => {
+  if (q === null || q === undefined) return null;
+  const s = String(q).trim().replace(/[$,\s]/g, '');
+  if (!s) return null;
+  if (!/^-?\d*\.?\d+$/.test(s)) return null;
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+};
+
+// True if amount roughly matches the query.
+// - "1234" matches 1234.00, 1234.56, 1234.99 (any amount whose integer part is 1234)
+// - "1234.5" matches 1234.50..1234.59
+// - "1234.56" matches 1234.56 exactly (cents-precision)
+export const matchesAmountQuery = (amount, queryAmount, queryStr) => {
+  if (amount === null || amount === undefined || queryAmount === null) return false;
+  const absAmt = Math.abs(parseFloat(amount) || 0);
+  const absQ = Math.abs(queryAmount);
+  const s = String(queryStr).trim().replace(/[$,\s]/g, '');
+  if (s.includes('.')) {
+    const decimals = s.split('.')[1]?.length || 0;
+    if (decimals >= 2) {
+      // Exact-cents match
+      return Math.round(absAmt * 100) === Math.round(absQ * 100);
+    }
+    // One decimal: match the dime
+    return Math.floor(absAmt * 10) === Math.floor(absQ * 10);
+  }
+  // No decimals: match the dollar
+  return Math.floor(absAmt) === Math.floor(absQ);
 };
 
 export const formatCurrencyDetailed = (amount) => {

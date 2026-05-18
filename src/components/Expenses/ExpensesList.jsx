@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { Search, Plus, ChevronDown, ChevronUp, RefreshCw, Pencil, Trash2, Calendar, Upload, CheckSquare, Square, X } from 'lucide-react';
 import { expenseCategories, OPERATING_CATEGORY_VALUES, recurringFrequencies } from '../../constants';
-import { formatDate, formatCurrency } from '../../utils';
+import { formatDate, formatCurrency, parseAmountQuery, matchesAmountQuery } from '../../utils';
 
 // Ordinal suffix helper
 function ordinal(n) {
@@ -46,11 +46,13 @@ export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDe
     if (yearFilter !== 'all') result = result.filter(e => (e.date || '').startsWith(yearFilter));
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
+      const qAmt = parseAmountQuery(searchQuery);
       result = result.filter(e =>
         (e.description || '').toLowerCase().includes(q) ||
         (e.propertyName || '').toLowerCase().includes(q) ||
         (e.vendor || '').toLowerCase().includes(q) ||
-        (e.notes || '').toLowerCase().includes(q)
+        (e.notes || '').toLowerCase().includes(q) ||
+        (qAmt !== null && matchesAmountQuery(e.amount, qAmt, searchQuery))
       );
     }
     return result;
@@ -377,7 +379,7 @@ export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDe
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
           <input
             type="text"
-            placeholder="Search expenses..."
+            placeholder="Search expenses, vendor, amount..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:border-red-500/50"
