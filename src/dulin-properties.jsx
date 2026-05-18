@@ -1085,16 +1085,28 @@ export default function DulinProperties() {
                     const isDistribution = (e) => e.category === 'owner-distribution';
                     const isMgmtFee = (e) => e.category === 'management-fee';
                     const isBusinessOp = (e) => OPERATING_CATEGORY_VALUES.has(e.category);
-                    const isPropertyExpense = (e) => !isDistribution(e) && !isMgmtFee(e) && !isBusinessOp(e);
-
-                    // YTD rent income (only paid)
-                    const ytdRent = rentPayments
-                      .filter(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(yearStr))
-                      .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+                    // Income-category entries that get mistakenly stored as expense rows
+                    // (parser bug — rent collected by mgmt co lands in expenses collection
+                    // with category='rent'). These must not count toward expenses, otherwise
+                    // YTD Expenses balloons by tens of thousands.
+                    const INCOME_CATEGORIES = new Set(['rent', 'late-fee', 'prepaid-rent', 'deposit']);
+                    const isMistaggedIncome = (e) => INCOME_CATEGORIES.has(e.category);
+                    const isPropertyExpense = (e) =>
+                      !isDistribution(e) && !isMgmtFee(e) && !isBusinessOp(e) && !isMistaggedIncome(e);
 
                     // YTD expenses broken down (non-template only)
                     const regularExpenses = expenses.filter(e => !e.isTemplate);
                     const ytdAll = regularExpenses.filter(e => (e.date || '').startsWith(yearStr));
+
+                    // YTD rent income = paid rentPayments PLUS any expense-collection rows
+                    // mistakenly stored with an income category (parser bug; see comment on
+                    // isMistaggedIncome). Reclassifying them visually so gross income looks right.
+                    const ytdMistaggedRentAsIncome = ytdAll.filter(isMistaggedIncome)
+                      .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                    const ytdRent = rentPayments
+                      .filter(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(yearStr))
+                      .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0)
+                      + ytdMistaggedRentAsIncome;
                     const ytdMgmtFees = ytdAll.filter(isMgmtFee).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                     const ytdPropertyExp = ytdAll.filter(isPropertyExpense).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                     const ytdBusinessOpEx = ytdAll.filter(isBusinessOp).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
@@ -1369,6 +1381,11 @@ export default function DulinProperties() {
                         const managed = sumExpenses(managedExp);
                         const owner = sumExpenses(ownerExp);
                         // Visible row totals — managed-only for B&H/Absolute, combined for self-managed.
+                        // EXCEPT for HOA and Other: these are categories management companies
+                        // basically never pay (mortgage, taxes, insurance, HOA dues) so we
+                        // always show the owner-paid total in the property row regardless of
+                        // who the management company is. Otherwise mom would have to expand
+                        // "Owner Paid" to see her HOA dues.
                         const view = isSelfManaged ? {
                           mgmtFee:   managed.mgmtFee   + owner.mgmtFee,
                           repairs:   managed.repairs   + owner.repairs,
@@ -1377,7 +1394,15 @@ export default function DulinProperties() {
                           hoa:       managed.hoa       + owner.hoa,
                           other:     managed.other     + owner.other,
                           dist:      managed.dist      + owner.dist,
-                        } : managed;
+                        } : {
+                          mgmtFee:   managed.mgmtFee,
+                          repairs:   managed.repairs,
+                          supplies:  managed.supplies,
+                          utilities: managed.utilities,
+                          hoa:       managed.hoa   + owner.hoa,   // always combined
+                          other:     managed.other + owner.other, // always combined
+                          dist:      managed.dist,
+                        };
                         return {
                           name: `${p.emoji || '🏠'} ${p.name}`, rent,
                           mgmtFee: view.mgmtFee, repairs: view.repairs,
@@ -1385,9 +1410,11 @@ export default function DulinProperties() {
                           hoa: view.hoa, other: view.other,
                           dist: view.dist,
                           // Separate owner-paid totals (still tracked for the "Owner Paid" row).
+                          // HOA + Other are zeroed here because they already appear in the
+                          // property row above — preventing double-counting in the UI.
                           ownerMgmtFee: owner.mgmtFee, ownerRepairs: owner.repairs,
                           ownerSupplies: owner.supplies, ownerUtilities: owner.utilities,
-                          ownerHoa: owner.hoa, ownerOther: owner.other,
+                          ownerHoa: 0, ownerOther: 0,
                           ownerDist: owner.dist,
                         };
                       });
@@ -1412,11 +1439,14 @@ export default function DulinProperties() {
                         repairs:   isSelfManaged ? groupManaged.repairs   + groupOwner.repairs   : groupManaged.repairs,
                         supplies:  isSelfManaged ? groupManaged.supplies  + groupOwner.supplies  : groupManaged.supplies,
                         utilities: isSelfManaged ? groupManaged.utilities + groupOwner.utilities : groupManaged.utilities,
-                        hoa:       isSelfManaged ? groupManaged.hoa       + groupOwner.hoa       : groupManaged.hoa,
-                        other:     isSelfManaged ? groupManaged.other     + groupOwner.other     : groupManaged.other,
+                        // HOA + Other always combined — see note on `view` above.
+                        hoa:       groupManaged.hoa   + groupOwner.hoa,
+                        other:     groupManaged.other + groupOwner.other,
                         dist:      isSelfManaged ? groupManaged.dist      + groupOwner.dist      : groupManaged.dist,
                       };
-                      const ownerTotals = { ...groupOwner };
+                      // HOA + Other are excluded from the "+ Owner Paid" row totals
+                      // because they're already shown inline in property rows.
+                      const ownerTotals = { ...groupOwner, hoa: 0, other: 0 };
                       // Managed-only is what came through this manager's statement.
                       const managedTotals = { rent: groupRent, ...groupManaged };
                       const hasOwnerExpenses = Object.values(ownerTotals).some(v => v > 0);
