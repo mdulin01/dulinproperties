@@ -123,6 +123,40 @@ export const useRent = (currentUser, saveRef, showToast, db = null) => {
     }
   }, [db, currentUser, showToast]);
 
+  /** Partial in-place update across many rent payments — see bulkUpdateExpenses for shape. */
+  const bulkUpdateRentPayments = useCallback(async (updatesById) => {
+    const ids = Object.keys(updatesById || {});
+    if (ids.length === 0) return { ok: true, count: 0 };
+    if (!db) {
+      console.error('[rent] bulkUpdateRentPayments: no db');
+      return { ok: false, count: 0, error: 'no-db' };
+    }
+    const docRef = doc(db, 'rentalData', 'rent');
+    try {
+      const updated = await runTransaction(db, async (t) => {
+        const snap = await t.get(docRef);
+        const existing = snap.exists() ? (snap.data().payments || []) : [];
+        const next = existing.map(r => {
+          const u = updatesById[String(r.id)];
+          return u ? { ...r, ...u } : r;
+        });
+        t.set(docRef, {
+          payments: sanitizeForFirestore(next),
+          lastUpdated: new Date().toISOString(),
+          updatedBy: currentUser || 'unknown',
+          saveId: `${Date.now()}-bulk-upd-${Math.random().toString(36).slice(2, 6)}`,
+        }, { merge: true });
+        return next;
+      });
+      setRentPayments(updated);
+      return { ok: true, count: ids.length };
+    } catch (err) {
+      console.error('[rent] bulkUpdateRentPayments: FAILED', err);
+      showToast(`Failed to update ${ids.length} rent payments: ${err.message || 'unknown error'}`, 'error');
+      return { ok: false, count: 0, error: err.message };
+    }
+  }, [db, currentUser, showToast]);
+
   return {
     rentPayments,
     showAddRentModal,
@@ -131,6 +165,7 @@ export const useRent = (currentUser, saveRef, showToast, db = null) => {
     deleteRentPayment,
     bulkDeleteRentPayments,
     bulkAddRentPayments,
+    bulkUpdateRentPayments,
     setShowAddRentModal,
     setRentPayments,
   };

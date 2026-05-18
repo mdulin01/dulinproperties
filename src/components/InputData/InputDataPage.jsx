@@ -25,6 +25,7 @@ export default function InputDataPage({
   // Mutations
   addExpense, addRentPayment, updateProperty,
   bulkAddExpenses, bulkAddRentPayments,
+  bulkUpdateExpenses, bulkUpdateRentPayments,
   bulkDeleteExpenses, bulkDeleteRentPayments,
   updateExpense, deleteExpense,
   updateRentPayment, deleteRentPayment,
@@ -97,6 +98,8 @@ export default function InputDataPage({
           properties={properties}
           bulkAddRentPayments={bulkAddRentPayments}
           bulkDeleteExpenses={bulkDeleteExpenses}
+          bulkUpdateExpenses={bulkUpdateExpenses}
+          bulkUpdateRentPayments={bulkUpdateRentPayments}
           updateExpense={updateExpense}
           deleteExpense={deleteExpense}
           updateRentPayment={updateRentPayment}

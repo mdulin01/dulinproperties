@@ -207,7 +207,7 @@ export default function DulinProperties() {
   const {
     rentPayments, setRentPayments,
     showAddRentModal, setShowAddRentModal,
-    addRentPayment, updateRentPayment, deleteRentPayment, bulkDeleteRentPayments, bulkAddRentPayments,
+    addRentPayment, updateRentPayment, deleteRentPayment, bulkDeleteRentPayments, bulkAddRentPayments, bulkUpdateRentPayments,
   } = rentHook;
 
   // Pass db directly — hook saves to Firestore internally, no ref indirection
@@ -215,7 +215,7 @@ export default function DulinProperties() {
   const {
     expenses, setExpenses,
     showAddExpenseModal, setShowAddExpenseModal,
-    addExpense, updateExpense, deleteExpense, bulkDeleteExpenses, bulkAddExpenses,
+    addExpense, updateExpense, deleteExpense, bulkDeleteExpenses, bulkAddExpenses, bulkUpdateExpenses,
   } = expensesHook;
 
   // Property financial breakdown modal
@@ -2111,6 +2111,8 @@ export default function DulinProperties() {
                   addRentPayment={addRentPayment}
                   bulkAddExpenses={bulkAddExpenses}
                   bulkAddRentPayments={bulkAddRentPayments}
+                  bulkUpdateExpenses={bulkUpdateExpenses}
+                  bulkUpdateRentPayments={bulkUpdateRentPayments}
                   bulkDeleteExpenses={bulkDeleteExpenses}
                   bulkDeleteRentPayments={bulkDeleteRentPayments}
                   updateExpense={updateExpense}
@@ -2472,6 +2474,12 @@ export default function DulinProperties() {
               existing={reconciliations[sm]}
               onSave={(monthData) => { saveReconciliation(sm, monthData); setShowReconcileModal(false); }}
               onClose={() => setShowReconcileModal(false)}
+              onOpenAddExpense={({ source }) => {
+                // Pre-fill the source so the new adjustment is attributed to
+                // the right management company / shows up on its reconciliation.
+                setShowAddExpenseModal({ sourceDocument: source || 'Manual' });
+                setShowReconcileModal(false);
+              }}
             />
           );
         })()}

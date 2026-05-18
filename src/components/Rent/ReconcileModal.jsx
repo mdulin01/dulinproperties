@@ -21,7 +21,7 @@ import { formatCurrency } from '../../utils';
  *   onSave         – (monthData) => void — saves the full month reconciliation object
  *   onClose        – () => void
  */
-export default function ReconcileModal({ month, monthLabel, reportData, mgrEmoji, mgrColors, existing, onSave, onClose }) {
+export default function ReconcileModal({ month, monthLabel, reportData, mgrEmoji, mgrColors, existing, onSave, onClose, onOpenAddExpense }) {
   // Local state: per-manager form data
   // Shape: { "Absolute": { statementTotal: number|"", confirmed: bool }, ... }
   const [formData, setFormData] = useState({});
@@ -33,6 +33,7 @@ export default function ReconcileModal({ month, monthLabel, reportData, mgrEmoji
       init[group.manager] = {
         statementTotal: prev?.statementTotal ?? '',
         confirmed: prev?.confirmed ?? false,
+        notes: prev?.notes ?? '',
       };
     });
     setFormData(init);
@@ -59,6 +60,7 @@ export default function ReconcileModal({ month, monthLabel, reportData, mgrEmoji
         statementTotal: statementVal,
         dashboardTotal: Math.round(dashboardTotal * 100) / 100,
         autoMatch,
+        notes: (fd.notes || '').trim(),
         reconciledAt: (fd.confirmed || autoMatch) ? new Date().toISOString() : (existing?.[mgr]?.reconciledAt || null),
       };
     });
@@ -207,6 +209,27 @@ export default function ReconcileModal({ month, monthLabel, reportData, mgrEmoji
                         </div>
                       )}
                     </div>
+                  )}
+                </div>
+
+                {/* Notes — free-text field for explaining mismatches, missing
+                    items, manual adjustments mom made outside the system, etc. */}
+                <div className="mb-2">
+                  <label className="text-[10px] text-white/40 mb-1 block uppercase tracking-wider">Notes</label>
+                  <textarea
+                    value={fd.notes || ''}
+                    onChange={e => updateManager(mgr, 'notes', e.target.value)}
+                    placeholder="e.g. '$10.24 Lowe's reimbursement carried to next month'"
+                    rows={2}
+                    className="w-full px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-xs text-white placeholder-white/20 focus:outline-none focus:border-emerald-500/50 resize-y"
+                  />
+                  {onOpenAddExpense && (
+                    <button
+                      onClick={() => onOpenAddExpense({ source: mgr === 'Dianne Dulin' ? 'Manual' : mgr })}
+                      className="mt-2 text-[11px] text-emerald-400 hover:text-emerald-300 underline underline-offset-2"
+                    >
+                      + Add an adjustment expense
+                    </button>
                   )}
                 </div>
 

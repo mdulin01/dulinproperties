@@ -24,6 +24,8 @@ export default function ValidateTransactions({
   properties,
   bulkAddRentPayments,
   bulkDeleteExpenses,
+  bulkUpdateExpenses,
+  bulkUpdateRentPayments,
   updateExpense,
   deleteExpense,
   updateRentPayment,
@@ -45,6 +47,8 @@ export default function ValidateTransactions({
   const [confirmDiscard, setConfirmDiscard] = useState(null); // {kind, id, label}
   const [migrateOpen, setMigrateOpen] = useState(false);
   const [migrating, setMigrating] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
 
   // Detect expense rows with an income category — these are rent rows that
   // were filed into the expenses collection by the old parser. The migration
@@ -55,6 +59,36 @@ export default function ValidateTransactions({
       INCOME_CATEGORIES.has(e.category)
     );
   }, [expenses]);
+
+  // Detect transactions whose propertyName field doesn't match the canonical
+  // name on the linked property record. Surfaces in filter dropdowns as phantom
+  // duplicates (e.g. "1329 S 11th B" + "1329 S 11th St B"). The canonical name
+  // is `${emoji} ${name}` from the property record.
+  const propertyNameById = useMemo(() => {
+    const m = new Map();
+    (properties || []).forEach(p => {
+      m.set(String(p.id), `${p.emoji || '🏠'} ${p.name || ''}`.trim());
+    });
+    return m;
+  }, [properties]);
+
+  const misNamedExpenses = useMemo(() =>
+    (expenses || []).filter(e => {
+      if (!e.propertyId) return false;
+      const expected = propertyNameById.get(String(e.propertyId));
+      return expected && e.propertyName && e.propertyName !== expected;
+    }),
+  [expenses, propertyNameById]);
+
+  const misNamedRents = useMemo(() =>
+    (rentPayments || []).filter(r => {
+      if (!r.propertyId) return false;
+      const expected = propertyNameById.get(String(r.propertyId));
+      return expected && r.propertyName && r.propertyName !== expected;
+    }),
+  [rentPayments, propertyNameById]);
+
+  const totalMisNamed = misNamedExpenses.length + misNamedRents.length;
 
   const runMigration = async () => {
     if (!bulkAddRentPayments || !bulkDeleteExpenses) {
@@ -105,6 +139,46 @@ export default function ValidateTransactions({
       showToast?.(`Migration error: ${err.message || 'unknown'}`, 'error');
     } finally {
       setMigrating(false);
+    }
+  };
+
+  // Bulk rename: walk through misnamed transactions and update each one's
+  // propertyName to match the canonical name from the property record.
+  const runRename = async () => {
+    if (!bulkUpdateExpenses || !bulkUpdateRentPayments) {
+      showToast?.('Rename not available — bulk update APIs not connected.', 'error');
+      return;
+    }
+    if (renaming) return;
+    setRenaming(true);
+    try {
+      const expUpdates = {};
+      misNamedExpenses.forEach(e => {
+        const expected = propertyNameById.get(String(e.propertyId));
+        if (expected) expUpdates[String(e.id)] = { propertyName: expected };
+      });
+      const rentUpdates = {};
+      misNamedRents.forEach(r => {
+        const expected = propertyNameById.get(String(r.propertyId));
+        if (expected) rentUpdates[String(r.id)] = { propertyName: expected };
+      });
+
+      const [expRes, rentRes] = await Promise.all([
+        Object.keys(expUpdates).length ? bulkUpdateExpenses(expUpdates) : Promise.resolve({ ok: true, count: 0 }),
+        Object.keys(rentUpdates).length ? bulkUpdateRentPayments(rentUpdates) : Promise.resolve({ ok: true, count: 0 }),
+      ]);
+      if (!expRes.ok || !rentRes.ok) {
+        showToast?.('Rename partially failed — re-run the cleanup.', 'error');
+        setRenaming(false);
+        return;
+      }
+      showToast?.(`Renamed ${expRes.count} expense rows and ${rentRes.count} rent rows.`, 'success');
+      setRenameOpen(false);
+    } catch (err) {
+      console.error('[rename-properties] failed:', err);
+      showToast?.(`Rename error: ${err.message || 'unknown'}`, 'error');
+    } finally {
+      setRenaming(false);
     }
   };
 
@@ -298,6 +372,84 @@ export default function ValidateTransactions({
 
   return (
     <div>
+      {/* Property-rename banner — surfaces transactions whose denormalized
+          propertyName is out of sync with the canonical property record. */}
+      {totalMisNamed > 0 && bulkUpdateExpenses && bulkUpdateRentPayments && (
+        <div className="mb-4 bg-blue-500/10 border border-blue-500/30 rounded-2xl p-4">
+          <div className="flex items-start gap-3">
+            <ArrowRightLeft className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-blue-100">
+                {totalMisNamed} transactions have an outdated property name
+              </p>
+              <p className="text-xs text-blue-200/70 mt-0.5">
+                Filters show phantom duplicates (e.g. "1329 S 11th B" + "1329 S 11th St B"). Re-syncs the
+                stored propertyName to the canonical name on each property record.
+              </p>
+              <button
+                onClick={() => setRenameOpen(true)}
+                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-400 text-blue-950 text-xs font-semibold transition"
+              >
+                Review &amp; clean up →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {renameOpen && (
+        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !renaming && setRenameOpen(false)} />
+          <div className="relative w-full max-w-2xl bg-slate-800 border border-white/10 rounded-t-3xl md:rounded-3xl p-6 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-white">Sync Property Names</h2>
+                <p className="text-xs text-white/40">{totalMisNamed} transactions will have their propertyName updated.</p>
+              </div>
+              <button onClick={() => !renaming && setRenameOpen(false)} disabled={renaming} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 disabled:opacity-50">
+                <X className="w-4 h-4 text-white/60" />
+              </button>
+            </div>
+            <div className="border border-white/10 rounded-lg overflow-hidden mb-4 max-h-80 overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-white/[0.04] sticky top-0">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-white/50 font-medium">Type</th>
+                    <th className="text-left px-3 py-2 text-white/50 font-medium">Stored Name</th>
+                    <th className="text-left px-3 py-2 text-white/50 font-medium">→ Canonical</th>
+                    <th className="text-left px-3 py-2 text-white/50 font-medium">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {misNamedExpenses.map(e => (
+                    <tr key={`e-${e.id}`} className="border-t border-white/5">
+                      <td className="px-3 py-1.5 text-red-300/80">expense</td>
+                      <td className="px-3 py-1.5 text-white/60 truncate max-w-[180px]">{e.propertyName}</td>
+                      <td className="px-3 py-1.5 text-emerald-300/80 truncate max-w-[180px]">{propertyNameById.get(String(e.propertyId))}</td>
+                      <td className="px-3 py-1.5 text-white/40 whitespace-nowrap">{e.date}</td>
+                    </tr>
+                  ))}
+                  {misNamedRents.map(r => (
+                    <tr key={`r-${r.id}`} className="border-t border-white/5">
+                      <td className="px-3 py-1.5 text-emerald-300/80">rent</td>
+                      <td className="px-3 py-1.5 text-white/60 truncate max-w-[180px]">{r.propertyName}</td>
+                      <td className="px-3 py-1.5 text-emerald-300/80 truncate max-w-[180px]">{propertyNameById.get(String(r.propertyId))}</td>
+                      <td className="px-3 py-1.5 text-white/40 whitespace-nowrap">{r.datePaid || r.month}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setRenameOpen(false)} disabled={renaming} className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/70 text-sm font-medium disabled:opacity-50">Cancel</button>
+              <button onClick={runRename} disabled={renaming} className="px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-400 text-blue-950 text-sm font-bold disabled:opacity-50">
+                {renaming ? 'Updating…' : `Sync ${totalMisNamed} rows`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Migration banner — only shows while mis-tagged income rows are still
           sitting in the expenses collection. Auto-disappears after migration. */}
       {misTaggedRows.length > 0 && bulkAddRentPayments && bulkDeleteExpenses && (

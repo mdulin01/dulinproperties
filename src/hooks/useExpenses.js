@@ -293,6 +293,45 @@ export const useExpenses = (db, currentUser, showToast) => {
     }
   }, [db, currentUser, showToast]);
 
+  /**
+   * Apply partial updates to many expenses in one atomic Firestore write.
+   * Pass an object keyed by expense id whose values are the fields to merge:
+   *   { 'expense-id-1': { propertyName: 'foo' }, 'expense-id-2': { vendor: 'bar' } }
+   * Unmentioned expenses are left alone.
+   */
+  const bulkUpdateExpenses = useCallback(async (updatesById) => {
+    const ids = Object.keys(updatesById || {});
+    if (ids.length === 0) return { ok: true, count: 0 };
+    if (!db) {
+      console.error('[expenses] bulkUpdateExpenses: no db');
+      return { ok: false, count: 0, error: 'no-db' };
+    }
+    const docRef = doc(db, 'rentalData', 'expenses');
+    try {
+      const updated = await runTransaction(db, async (t) => {
+        const snap = await t.get(docRef);
+        const existing = snap.exists() ? (snap.data().expenses || []) : [];
+        const next = existing.map(e => {
+          const u = updatesById[String(e.id)];
+          return u ? { ...e, ...u } : e;
+        });
+        t.set(docRef, {
+          expenses: sanitizeForFirestore(next),
+          lastUpdated: new Date().toISOString(),
+          updatedBy: currentUser || 'unknown',
+          saveId: `${Date.now()}-bulk-upd-${Math.random().toString(36).slice(2, 6)}`,
+        }, { merge: true });
+        return next;
+      });
+      setExpenses(updated);
+      return { ok: true, count: ids.length };
+    } catch (err) {
+      console.error('[expenses] bulkUpdateExpenses: FAILED', err);
+      showToast(`Failed to update ${ids.length} expenses: ${err.message || 'unknown error'}`, 'error');
+      return { ok: false, count: 0, error: err.message };
+    }
+  }, [db, currentUser, showToast]);
+
   return {
     expenses,
     showAddExpenseModal,
@@ -301,6 +340,7 @@ export const useExpenses = (db, currentUser, showToast) => {
     deleteExpense,
     bulkDeleteExpenses,
     bulkAddExpenses,
+    bulkUpdateExpenses,
     setShowAddExpenseModal,
     setExpenses,
   };
