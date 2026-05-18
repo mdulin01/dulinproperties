@@ -577,14 +577,29 @@ export async function parseOwnerPacket(pdfData) {
     }
   }
 
-  // Flatten all transactions with property info attached
+  // Flatten all transactions with property info attached.
+  //
+  // Income vs expense classification:
+  // The PDF column the amount lands in is unreliable — owner-packet layouts
+  // vary, and a rent-collected row sometimes parses into the Cash Out column
+  // instead of Cash In. We use the resolved category as the source of truth:
+  //   - owner-distribution → distribution
+  //   - rent / late-fee / prepaid-rent / deposit → income
+  //   - everything else → expense
+  // This prevents rent-collected rows from being silently filed as expenses,
+  // which was inflating YTD expenses by tens of thousands.
+  const INCOME_CATEGORIES = new Set(['rent', 'late-fee', 'prepaid-rent', 'deposit']);
   const allTransactions = [];
   properties.forEach(prop => {
     prop.transactions.forEach(tx => {
       const category = categorizeTransaction(tx);
-      const isIncome = tx.cashIn > 0 && tx.cashOut === 0;
-      const isExpense = tx.cashOut > 0;
       const isDistribution = category === 'owner-distribution';
+      const looksLikeIncome = INCOME_CATEGORIES.has(category);
+      // Trust the category; only fall back to column heuristic if category is ambiguous.
+      const isIncome = !isDistribution && (looksLikeIncome || (tx.cashIn > 0 && tx.cashOut === 0));
+      const isExpense = !isDistribution && !isIncome;
+      // Use whichever column has the value (parser may have put it in either one).
+      const amount = Math.max(tx.cashIn || 0, tx.cashOut || 0);
 
       allTransactions.push({
         ...tx,
@@ -594,7 +609,7 @@ export async function parseOwnerPacket(pdfData) {
         isIncome,
         isExpense,
         isDistribution,
-        amount: isIncome ? tx.cashIn : tx.cashOut,
+        amount,
         flowType: isDistribution ? 'distribution' : (isIncome ? 'income' : 'expense'),
       });
     });

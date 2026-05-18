@@ -10,13 +10,17 @@ const PropertyFinancialBreakdownModal = ({ properties, rentPayments, expenses, o
   const currentYear = new Date().getFullYear();
 
   // Separate operating expenses from property expenses.
-  // Also exclude owner-distribution — disbursements are not a real expense
-  // (they're just the owner's own money being paid back out), so they must
-  // not count against a property's YTD expenses or profit.
+  //   - Exclude owner-distribution: disbursements aren't a real expense
+  //     (they're just the owner's own money being paid back out).
+  //   - Exclude income categories (rent / late-fee / prepaid-rent / deposit):
+  //     these slip into the expenses collection due to an owner-packet
+  //     parser quirk; counting them would inflate property expenses.
+  const INCOME_CATEGORIES = new Set(['rent', 'late-fee', 'prepaid-rent', 'deposit']);
   const nonOperatingExpenses = useMemo(() =>
     (expenses || []).filter(e =>
       !OPERATING_CATEGORY_VALUES.has(e.category) &&
-      e.category !== 'owner-distribution'
+      e.category !== 'owner-distribution' &&
+      !INCOME_CATEGORIES.has(e.category)
     ),
     [expenses]
   );
