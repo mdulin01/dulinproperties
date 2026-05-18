@@ -1,9 +1,14 @@
 import React, { useMemo, useState } from 'react';
-import { Check, Edit3, Trash2, AlertCircle, ChevronDown, ChevronRight, FileText, CheckCheck, Filter, Search, X, Plus } from 'lucide-react';
+import { Check, Edit3, Trash2, AlertCircle, ChevronDown, ChevronRight, FileText, CheckCheck, Filter, Search, X, Plus, ArrowRightLeft } from 'lucide-react';
 import HelpTip from '../HelpTip';
 import { formatCurrency, parseAmountQuery, matchesAmountQuery } from '../../utils';
 
 const SOURCES = ['Barnett & Hill', 'Absolute', 'FFB Bank', 'Citi Card', 'Costco Card'];
+
+// Expense rows that got stored with an income category because of an old
+// owner-packet parser bug. The migration banner below this surfaces them and
+// lets Dianne convert them to rent payments in one click.
+const INCOME_CATEGORIES = new Set(['rent', 'late-fee', 'prepaid-rent', 'deposit']);
 
 /**
  * ValidateTransactions — Dianne reviews every imported transaction and marks it validated,
@@ -17,6 +22,8 @@ export default function ValidateTransactions({
   expenses,
   rentPayments,
   properties,
+  bulkAddRentPayments,
+  bulkDeleteExpenses,
   updateExpense,
   deleteExpense,
   updateRentPayment,
@@ -36,6 +43,70 @@ export default function ValidateTransactions({
   // Group key is `${source}|${ym}` so Dianne can review one statement at a time.
   const [expandedGroups, setExpandedGroups] = useState({});
   const [confirmDiscard, setConfirmDiscard] = useState(null); // {kind, id, label}
+  const [migrateOpen, setMigrateOpen] = useState(false);
+  const [migrating, setMigrating] = useState(false);
+
+  // Detect expense rows with an income category — these are rent rows that
+  // were filed into the expenses collection by the old parser. The migration
+  // banner converts them to rent payments in one click.
+  const misTaggedRows = useMemo(() => {
+    return (expenses || []).filter(e =>
+      !e.isTemplate &&
+      INCOME_CATEGORIES.has(e.category)
+    );
+  }, [expenses]);
+
+  const runMigration = async () => {
+    if (!bulkAddRentPayments || !bulkDeleteExpenses) {
+      showToast?.('Migration not available — bulk write APIs not connected.', 'error');
+      return;
+    }
+    if (migrating) return;
+    setMigrating(true);
+    try {
+      // 1. Build rent-payment payloads from each mis-tagged expense.
+      const newPayments = misTaggedRows.map((e) => ({
+        propertyId: e.propertyId || '',
+        propertyName: e.propertyName || '',
+        tenantName: e.vendor || (e.description || '').replace(/\s*-?\s*rent income.*$/i, '').trim() || '',
+        amount: parseFloat(e.amount) || 0,
+        month: (e.date || '').slice(0, 7),
+        datePaid: e.date || '',
+        status: 'paid',
+        category: e.category, // 'rent', 'late-fee', etc.
+        sourceDocument: e.sourceDocument || 'Migrated',
+        notes: `Migrated from mis-tagged expense (${e.description || ''}). ${e.notes || ''}`.trim(),
+        validated: !!e.validated,
+        fingerprint: e.fingerprint,
+      }));
+
+      // 2. Write rent payments first. If this fails, nothing is lost — the
+      //    original expense rows are still there for a retry.
+      const addRes = await bulkAddRentPayments(newPayments);
+      if (!addRes?.ok) {
+        showToast?.('Migration failed at rent-payment step. Nothing changed.', 'error');
+        setMigrating(false);
+        return;
+      }
+
+      // 3. Now delete the original expense rows.
+      const ids = misTaggedRows.map(e => e.id).filter(Boolean);
+      const delRes = await bulkDeleteExpenses(ids);
+      if (!delRes?.ok) {
+        showToast?.('Rent payments created, but deleting the old expense rows failed. You may have duplicates — check and re-run.', 'error');
+        setMigrating(false);
+        return;
+      }
+
+      showToast?.(`Migrated ${newPayments.length} rent rows from expenses → rent payments.`, 'success');
+      setMigrateOpen(false);
+    } catch (err) {
+      console.error('[migrate-rent-income] failed:', err);
+      showToast?.(`Migration error: ${err.message || 'unknown'}`, 'error');
+    } finally {
+      setMigrating(false);
+    }
+  };
 
   // Build a combined list of imported transactions (both income and expense)
   const allRows = useMemo(() => {
@@ -227,6 +298,107 @@ export default function ValidateTransactions({
 
   return (
     <div>
+      {/* Migration banner — only shows while mis-tagged income rows are still
+          sitting in the expenses collection. Auto-disappears after migration. */}
+      {misTaggedRows.length > 0 && bulkAddRentPayments && bulkDeleteExpenses && (
+        <div className="mb-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4">
+          <div className="flex items-start gap-3">
+            <ArrowRightLeft className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-amber-100">
+                {misTaggedRows.length} rent rows are filed as expenses
+              </p>
+              <p className="text-xs text-amber-200/70 mt-0.5">
+                Old parser bug — rent collected by management companies got stored in the wrong place.
+                Convert them to rent payments so income/expense totals match the statements.
+              </p>
+              <button
+                onClick={() => setMigrateOpen(true)}
+                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-amber-950 text-xs font-semibold transition"
+              >
+                Review &amp; migrate →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Migration preview modal */}
+      {migrateOpen && (
+        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !migrating && setMigrateOpen(false)} />
+          <div className="relative w-full max-w-2xl bg-slate-800 border border-white/10 rounded-t-3xl md:rounded-3xl p-6 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-white">Migrate Mis-tagged Rent Rows</h2>
+                <p className="text-xs text-white/40">
+                  {misTaggedRows.length} expense rows will become rent payments.
+                </p>
+              </div>
+              <button
+                onClick={() => !migrating && setMigrateOpen(false)}
+                disabled={migrating}
+                className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 disabled:opacity-50"
+              >
+                <X className="w-4 h-4 text-white/60" />
+              </button>
+            </div>
+
+            <div className="text-xs text-white/60 mb-4 p-3 bg-white/[0.04] rounded-lg border border-white/[0.06]">
+              <strong className="text-white/80">What will happen:</strong>
+              <ol className="mt-1 ml-4 list-decimal space-y-0.5">
+                <li>Create {misTaggedRows.length} new entries in the rent-payments ledger.</li>
+                <li>Delete the original entries from the expenses ledger.</li>
+                <li>Dashboard YTD numbers will reflect actual reality (this is already true visually via the display fix, but now the underlying data matches too).</li>
+              </ol>
+              <p className="mt-2 text-amber-200/80">
+                If step 2 fails after step 1 succeeds, you may see duplicates. Re-running the migration will clean them up.
+              </p>
+            </div>
+
+            <div className="border border-white/10 rounded-lg overflow-hidden mb-4 max-h-80 overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-white/[0.04] sticky top-0">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-white/50 font-medium">Date</th>
+                    <th className="text-left px-3 py-2 text-white/50 font-medium">Description</th>
+                    <th className="text-left px-3 py-2 text-white/50 font-medium">Property</th>
+                    <th className="text-right px-3 py-2 text-white/50 font-medium">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {misTaggedRows.map(e => (
+                    <tr key={e.id} className="border-t border-white/5">
+                      <td className="px-3 py-1.5 text-white/70 whitespace-nowrap">{e.date}</td>
+                      <td className="px-3 py-1.5 text-white/80 truncate max-w-xs">{e.description}</td>
+                      <td className="px-3 py-1.5 text-white/60 truncate max-w-xs">{e.propertyName || '—'}</td>
+                      <td className="px-3 py-1.5 text-right font-medium text-emerald-300">+{formatCurrency(Math.abs(parseFloat(e.amount) || 0))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setMigrateOpen(false)}
+                disabled={migrating}
+                className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/70 text-sm font-medium disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={runMigration}
+                disabled={migrating}
+                className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-emerald-950 text-sm font-bold disabled:opacity-50"
+              >
+                {migrating ? 'Migrating…' : `Migrate ${misTaggedRows.length} rows`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header + explanation + manual-add control */}
       <div className="mb-4 flex items-start gap-3">
         <div className="flex-1 min-w-0">
