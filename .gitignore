@@ -8,3 +8,7 @@ vite.config.js.timestamp-*
 
 # Local owner/financial reports (contain tenant PII)
 reports/
+
+dist-new
+dist2
+dist3
