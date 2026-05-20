@@ -1,7 +1,18 @@
 import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { Upload, ChevronDown, Check, X, AlertCircle, FileText, Trash2, Loader, Calendar, ArrowRight } from 'lucide-react';
 import HelpTip from '../HelpTip';
-import { expenseCategories, incomeCategories } from '../../constants';
+import { expenseCategories, incomeCategories, OPERATING_CATEGORY_VALUES } from '../../constants';
+
+// When an entry is reassigned to "Operating / Business" we switch its expense
+// category to the operating equivalent so it lands in the dashboard's Business
+// Operating Expenses section (which keys off the category, not the property).
+const PROPERTY_TO_OP_CATEGORY = {
+  internet: 'op-internet',
+  software: 'op-software',
+  utilities: 'op-internet',
+  legal: 'op-accounting',
+  other: 'op-other',
+};
 import { formatCurrency } from '../../utils';
 import { parseOwnerPacket } from '../../utils/ownerPacketParser';
 import { parseBankStatement } from '../../utils/bankStatementParser';
@@ -1523,16 +1534,36 @@ export default function DocumentImport({
                         </td>
                         <td className="px-3 py-2">
                           <select
-                            value={entry.propertyId || ''}
+                            value={
+                              entry.isOperating || (entry.flowType === 'expense' && OPERATING_CATEGORY_VALUES.has(entry.category))
+                                ? '__operating__'
+                                : (entry.propertyId || '')
+                            }
                             onChange={(e) => {
-                              const prop = properties.find(p => String(p.id) === e.target.value);
-                              updateEntry(idx, 'propertyId', e.target.value);
-                              updateEntry(idx, 'propertyName', prop ? `${prop.emoji || '🏠'} ${prop.name}` : '');
+                              const val = e.target.value;
+                              if (val === '__operating__') {
+                                // Operating / Business — no property. For expenses, switch the
+                                // category to its operating equivalent so it counts as business
+                                // overhead on the dashboard. Income (interest/refund) just loses
+                                // its property.
+                                updateEntry(idx, 'propertyId', '');
+                                updateEntry(idx, 'propertyName', 'Operating / Business');
+                                updateEntry(idx, 'isOperating', true);
+                                if (entry.flowType === 'expense' && !OPERATING_CATEGORY_VALUES.has(entry.category)) {
+                                  updateEntry(idx, 'category', PROPERTY_TO_OP_CATEGORY[entry.category] || 'op-other');
+                                }
+                              } else {
+                                const prop = properties.find(p => String(p.id) === val);
+                                updateEntry(idx, 'propertyId', val);
+                                updateEntry(idx, 'propertyName', prop ? `${prop.emoji || '🏠'} ${prop.name}` : '');
+                                updateEntry(idx, 'isOperating', false);
+                              }
                             }}
-                            className="text-[10px] px-1.5 py-1 bg-white/[0.05] border border-white/[0.08] rounded-lg text-white/60 focus:outline-none max-w-[120px]"
+                            className="text-[10px] px-1.5 py-1 bg-white/[0.05] border border-white/[0.08] rounded-lg text-white/60 focus:outline-none max-w-[130px]"
                             disabled={entry.imported}
                           >
                             <option value="">—</option>
+                            <option value="__operating__">🏢 Operating / Business</option>
                             {properties.map(p => (
                               <option key={p.id} value={String(p.id)}>{p.emoji || '🏠'} {p.name}</option>
                             ))}
