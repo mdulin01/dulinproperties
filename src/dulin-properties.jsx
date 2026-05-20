@@ -2491,7 +2491,17 @@ export default function DulinProperties() {
             properties={properties}
             onUploadPhoto={uploadPhoto}
             onSave={(expenseData) => {
-              if (typeof showAddExpenseModal === 'object' && showAddExpenseModal.id) {
+              if (Array.isArray(expenseData)) {
+                // Split transaction — one check/payment divided across several
+                // properties. Write all the per-property rows in one batch.
+                const stamped = expenseData.map((e, i) => ({
+                  ...e,
+                  id: `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+                  createdAt: new Date().toISOString(),
+                  createdBy: currentUser,
+                }));
+                bulkAddExpenses(stamped);
+              } else if (typeof showAddExpenseModal === 'object' && showAddExpenseModal.id) {
                 updateExpense(showAddExpenseModal.id, expenseData);
               } else {
                 addExpense({ ...expenseData, id: Date.now().toString(), createdAt: new Date().toISOString(), createdBy: currentUser });

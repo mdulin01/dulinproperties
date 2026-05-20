@@ -1,10 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Trash2, ImagePlus, RefreshCw } from 'lucide-react';
+import { X, Trash2, ImagePlus, RefreshCw, Split, Plus } from 'lucide-react';
 import { propertyExpenseCategories, operatingExpenseCategories, expenseCategories, OPERATING_CATEGORY_VALUES, recurringFrequencies, MILEAGE_RATE } from '../../constants';
 
 export default function AddExpenseModal({ expense, properties, onSave, onDelete, onClose, onUploadPhoto }) {
   const isEditing = expense && expense.id;
   const fileInputRef = useRef(null);
+
+  // Split mode — one payment (e.g. a condo-fee check covering 3 properties)
+  // divided across multiple properties. Each row becomes its own expense so
+  // per-property books stay accurate, but they share a splitGroupId so they
+  // can be recognized as one real-world payment.
+  const [splitMode, setSplitMode] = useState(false);
+  const [splitRows, setSplitRows] = useState([
+    { propertyId: '', amount: '' },
+    { propertyId: '', amount: '' },
+  ]);
 
   const [form, setForm] = useState({
     propertyId: '',
@@ -138,6 +148,19 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
     });
   };
 
+  // ---- Split helpers ----
+  const splitTotal = splitRows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+  const splitRemainder = (parseFloat(form.amount) || 0) - splitTotal;
+  const splitValid = splitMode &&
+    splitRows.filter(r => r.propertyId && parseFloat(r.amount) > 0).length >= 2 &&
+    Math.abs(splitRemainder) < 0.01;
+
+  const updateSplitRow = (i, field, value) => {
+    setSplitRows(rows => rows.map((r, idx) => idx === i ? { ...r, [field]: value } : r));
+  };
+  const addSplitRow = () => setSplitRows(rows => [...rows, { propertyId: '', amount: '' }]);
+  const removeSplitRow = (i) => setSplitRows(rows => rows.length > 2 ? rows.filter((_, idx) => idx !== i) : rows);
+
   const handleSave = () => {
     if (isMileage) {
       if (!form.miles || parseFloat(form.miles) <= 0) return;
@@ -149,6 +172,33 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
       const day = parseInt(form.dueDay);
       if (!day || day < 1 || day > 31) return;
     }
+
+    // Split: emit one expense per property row, sharing description/date/etc.
+    if (splitMode && !isMileage && !isOperating) {
+      if (!splitValid) return;
+      const splitGroupId = `split-${Date.now()}`;
+      const rows = splitRows
+        .filter(r => r.propertyId && parseFloat(r.amount) > 0)
+        .map(r => {
+          const prop = properties.find(p => String(p.id) === String(r.propertyId));
+          return {
+            propertyId: r.propertyId,
+            propertyName: prop ? `${prop.emoji || '🏠'} ${prop.name}` : '',
+            category: form.category,
+            description: form.description,
+            amount: parseFloat(r.amount) || 0,
+            date: form.date,
+            vendor: form.vendor,
+            notes: `${form.notes ? form.notes + ' · ' : ''}Split of $${(parseFloat(form.amount) || 0).toFixed(2)} across ${splitRows.filter(x => x.propertyId).length} properties`.trim(),
+            receiptPhoto: form.receiptPhoto || '',
+            sourceDocument: form.sourceDocument || '',
+            splitGroupId,
+          };
+        });
+      onSave(rows); // array → parent batches them
+      return;
+    }
+
     onSave({
       ...form,
       amount: parseFloat(form.amount) || 0,
@@ -376,8 +426,24 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
                 />
               </div>
 
-              {/* Property (hidden for operating categories) */}
-              {!isOperating ? (
+              {/* Split toggle — only when creating a property-tied, non-recurring expense */}
+              {!isOperating && !form.recurring && !isEditing && (
+                <button
+                  type="button"
+                  onClick={() => setSplitMode(v => !v)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition border ${
+                    splitMode
+                      ? 'bg-purple-500/20 border-purple-500/30 text-purple-300'
+                      : 'bg-white/[0.05] border-white/[0.08] text-white/40 hover:bg-white/10'
+                  }`}
+                >
+                  <Split className="w-3.5 h-3.5" />
+                  Split across properties
+                </button>
+              )}
+
+              {/* Property (hidden for operating categories and split mode) */}
+              {!isOperating && !splitMode ? (
                 <div>
                   <label className="text-xs text-white/40 mb-1 block">Property</label>
                   <select
@@ -391,16 +457,16 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
                     ))}
                   </select>
                 </div>
-              ) : (
+              ) : isOperating ? (
                 <div className="px-3 py-2 bg-amber-500/5 border border-amber-500/20 rounded-xl text-xs text-amber-300/70">
                   Business-wide operating expense — not tied to a specific property
                 </div>
-              )}
+              ) : null}
 
-              {/* Amount & Date */}
+              {/* Amount & Date — Amount is the TOTAL when splitting */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-white/40 mb-1 block">Amount</label>
+                  <label className="text-xs text-white/40 mb-1 block">{splitMode ? 'Total Amount' : 'Amount'}</label>
                   <input
                     type="number"
                     step="0.01"
@@ -420,6 +486,55 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
                   />
                 </div>
               </div>
+
+              {/* Split rows */}
+              {splitMode && !isOperating && (
+                <div className="bg-purple-500/[0.06] border border-purple-500/20 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-purple-200">Divide the total across properties</span>
+                    <span className={`text-xs font-medium ${Math.abs(splitRemainder) < 0.01 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      {Math.abs(splitRemainder) < 0.01 ? 'Balanced ✓' : `${splitRemainder > 0 ? 'Unallocated' : 'Over by'} $${Math.abs(splitRemainder).toFixed(2)}`}
+                    </span>
+                  </div>
+                  {splitRows.map((r, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <select
+                        value={r.propertyId}
+                        onChange={e => updateSplitRow(i, 'propertyId', e.target.value)}
+                        className="flex-1 px-2 py-1.5 bg-white/[0.05] border border-white/[0.08] rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
+                      >
+                        <option value="">Select property…</option>
+                        {properties.map(p => (
+                          <option key={p.id} value={p.id}>{p.emoji || '🏠'} {p.name}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={r.amount}
+                        onChange={e => updateSplitRow(i, 'amount', e.target.value)}
+                        placeholder="0.00"
+                        className="w-24 px-2 py-1.5 bg-white/[0.05] border border-white/[0.08] rounded-lg text-xs text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeSplitRow(i)}
+                        disabled={splitRows.length <= 2}
+                        className="p-1.5 text-white/30 hover:text-red-400 disabled:opacity-30"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={addSplitRow}
+                    className="flex items-center gap-1 text-xs text-purple-300 hover:text-purple-200"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add property
+                  </button>
+                </div>
+              )}
 
               {/* Vendor */}
               <div>
@@ -522,10 +637,16 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
           ) : <div />}
           <button
             onClick={handleSave}
-            disabled={isMileage ? (!form.miles || parseFloat(form.miles) <= 0) : (!form.description.trim() || (form.recurring && (!form.dueDay || parseInt(form.dueDay) < 1 || parseInt(form.dueDay) > 31)))}
+            disabled={
+              isMileage
+                ? (!form.miles || parseFloat(form.miles) <= 0)
+                : splitMode
+                  ? (!form.description.trim() || !splitValid)
+                  : (!form.description.trim() || (form.recurring && (!form.dueDay || parseInt(form.dueDay) < 1 || parseInt(form.dueDay) > 31)))
+            }
             className="px-6 py-2 bg-red-500 text-white rounded-xl text-sm font-medium hover:bg-red-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isEditing ? 'Update' : form.recurring ? 'Save Recurring Bill' : isMileage ? 'Log Trip' : 'Record Expense'}
+            {isEditing ? 'Update' : splitMode ? `Save Split (${splitRows.filter(r => r.propertyId && parseFloat(r.amount) > 0).length})` : form.recurring ? 'Save Recurring Bill' : isMileage ? 'Log Trip' : 'Record Expense'}
           </button>
         </div>
       </div>
