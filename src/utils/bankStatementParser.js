@@ -146,6 +146,12 @@ function detectPeriod(fullText) {
 const INCOME_KEYWORDS = [
   'deposit', 'credit', 'interest', 'refund', 'reversal',
   'ach deposit', 'mobile deposit', 'wire in', 'dep ',
+  // Rent-collection platforms — incoming rent deposits. Without these, an
+  // apts.com rent deposit whose line lacks the word "deposit" fell through to
+  // the default 'expense' (this is what mislabeled the Wallin / Hodkinson rents).
+  'apts.com', 'apartments.com', 'apartments com', 'apts com',
+  'rent payment', 'rental income', 'rent dep', 'rentredi', 'baselane',
+  'cozy', 'avail rent', 'zillow rental',
 ];
 const EXPENSE_KEYWORDS = [
   'withdrawal', 'debit', 'purchase', 'pos ', 'atm ', 'check ',
@@ -166,6 +172,7 @@ function guessFlowType(description, sourceKind) {
 function guessCategory(description) {
   const d = (description || '').toLowerCase();
   const rules = [
+    [['apts.com', 'apartments.com', 'apartments com', 'apts com', 'rent payment', 'rental income', 'rent dep'], 'rent'],
     [['lowe', 'home depot', 'menard', 'ace hardware', 'hardware'], 'repair'],
     [['plumb', 'drain', 'pipe', 'toilet', 'faucet', 'water heater'], 'plumbing'],
     [['electric', 'wiring', 'outlet', 'breaker'], 'electrical'],
