@@ -553,6 +553,8 @@ export default function DocumentImport({
   const [importedCount, setImportedCount] = useState(0);
   const [ffbMonth, setFfbMonth] = useState(null); // 'jan26' | 'feb26' for FFB sub-selector
   const [detectedMonth, setDetectedMonth] = useState(null); // auto-detected from uploaded PDF period
+  const [detectedAccounts, setDetectedAccounts] = useState([]); // account suffixes found in a multi-account bank PDF
+  const [accountFilter, setAccountFilter] = useState('all');    // 'all' | '<last4>'
   const [parsingPdf, setParsingPdf] = useState(false);
   const [parseError, setParseError] = useState('');
   const [uploadedFileName, setUploadedFileName] = useState('');
@@ -627,7 +629,11 @@ export default function DocumentImport({
    * ~1-write-per-second throttle and many fail silently.
    */
   const handleImport = useCallback(async () => {
-    const selected = entries.filter(e => e.selected);
+    // Respect the multi-account filter: never import rows from an account the
+    // user has filtered out (e.g. non-rental 5711 / 0410).
+    const selected = entries.filter(e =>
+      e.selected && (accountFilter === 'all' || e.account === accountFilter)
+    );
     if (selected.length === 0) return;
     setImporting(true);
 
@@ -707,7 +713,7 @@ export default function DocumentImport({
     } else {
       showToast('Nothing was saved. Please try again or contact support.', 'error');
     }
-  }, [entries, addExpense, addRentPayment, bulkAddExpenses, bulkAddRentPayments, showToast]);
+  }, [entries, accountFilter, addExpense, addRentPayment, bulkAddExpenses, bulkAddRentPayments, showToast]);
 
   // Find duplicate: return matching existing expense/rent entries or null.
   //
@@ -817,6 +823,10 @@ export default function DocumentImport({
           return;
         }
         if (result.period?.monthStr) setDetectedMonth(result.period.monthStr);
+        // Surface any distinct account numbers found so the user can filter to
+        // just the rental account if the PDF bundled several.
+        setDetectedAccounts(result.accounts || []);
+        setAccountFilter('all');
 
         mapped = result.transactions.map((tx, idx) => {
           const isIncome = tx.flowType === 'income';
@@ -832,6 +842,7 @@ export default function DocumentImport({
             propertyName: '',
             propertyHint: '',
             sourceDocument: sourceLabel,
+            account: tx.account || null,
             flowType: isIncome ? 'income' : 'expense',
             incomeCategory: isIncome ? 'rent' : undefined,
             imported: false,
@@ -1080,7 +1091,12 @@ export default function DocumentImport({
 
   const source = SOURCE_TYPES.find(s => s.id === activeSource);
   const c = colorMap[source.color];
-  const selectedCount = entries.filter(e => e.selected).length;
+  // Apply the multi-account filter (if a specific account is chosen) to the
+  // entries shown and counted. 'all' shows everything.
+  const accountFilteredEntries = accountFilter === 'all'
+    ? entries
+    : entries.filter(e => e.account === accountFilter);
+  const selectedCount = accountFilteredEntries.filter(e => e.selected).length;
   const notImported = entries.filter(e => !e.imported);
 
   return (
@@ -1345,12 +1361,34 @@ export default function DocumentImport({
             );
           })()}
 
+          {/* Multi-account notice + filter — only when the PDF bundled more
+              than one account (e.g. rental 5710 + personal 5711 + 0410). */}
+          {detectedAccounts.length > 1 && (
+            <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 mb-3 flex items-center gap-3 flex-wrap">
+              <span className="text-xs text-blue-200/80">
+                This statement has {detectedAccounts.length} accounts. Pick the one to import:
+              </span>
+              <select
+                value={accountFilter}
+                onChange={(e) => setAccountFilter(e.target.value)}
+                className="px-2 py-1 bg-slate-800 border border-white/15 rounded-lg text-xs text-white"
+              >
+                <option value="all">All accounts ({entries.length})</option>
+                {detectedAccounts.map(acct => {
+                  const n = entries.filter(e => e.account === acct).length;
+                  return <option key={acct} value={acct}>•••{acct} ({n})</option>;
+                })}
+              </select>
+              <span className="text-[11px] text-blue-200/50">Tip: your rental account is the one ending 5710.</span>
+            </div>
+          )}
+
           {/* Summary bar */}
           <div className={`${c.bg} border ${c.border} rounded-xl p-3 mb-3 flex items-center justify-between`}>
             <div className="flex items-center gap-3">
-              <span className="text-sm text-white/70">{notImported.length} entries</span>
-              {entries.filter(e => e.isDuplicate).length > 0 && (
-                <span className="text-xs text-amber-300">({entries.filter(e => e.isDuplicate).length} pre-unchecked as duplicates)</span>
+              <span className="text-sm text-white/70">{accountFilteredEntries.filter(e => !e.imported).length} entries</span>
+              {accountFilteredEntries.filter(e => e.isDuplicate).length > 0 && (
+                <span className="text-xs text-amber-300">({accountFilteredEntries.filter(e => e.isDuplicate).length} pre-unchecked as duplicates)</span>
               )}
               <button onClick={() => selectAll(true)} className="text-xs text-white/40 hover:text-white/70 underline">Select All</button>
               <button onClick={() => selectAll(false)} className="text-xs text-white/40 hover:text-white/70 underline">Deselect All</button>
@@ -1388,7 +1426,7 @@ export default function DocumentImport({
                   </tr>
                 </thead>
                 <tbody>
-                  {entries.map((entry, idx) => {
+                  {accountFilteredEntries.map((entry, idx) => {
                     const dupMatches = findDuplicate(entry);
                     return (
                       <tr

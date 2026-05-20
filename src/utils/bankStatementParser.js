@@ -98,6 +98,28 @@ function parseDateToken(str, fallbackYear) {
 }
 
 /**
+ * Detect a bank-account number on a row that acts as a section header.
+ * Many statements bundle several accounts into one PDF, each introduced by a
+ * header like "Account Number: ...5710", "Account ending in 5710", or
+ * "Checking 1234 5710". Returns the last 4 digits, or null if the row isn't an
+ * account header.
+ */
+function detectAccountOnRow(lineText) {
+  if (!lineText) return null;
+  const lower = lineText.toLowerCase();
+  // Only treat rows that actually mention an account/checking/savings label as
+  // headers — avoids matching random long digit strings inside transactions.
+  if (!/\b(account|acct|checking|savings)\b/.test(lower)) return null;
+  // "ending in 5710", "...5710", "xxxx5710", "Account Number 5710"
+  const m = lineText.match(/(?:ending in|x{2,}|\*{2,}|#|\.{2,}|number|no\.?|:)\s*(\d{4,})\b/i)
+    || lineText.match(/\b(\d{4,})\s*$/);
+  if (!m) return null;
+  const digits = m[1].replace(/\D/g, '');
+  if (digits.length < 4) return null;
+  return digits.slice(-4);
+}
+
+/**
  * Try to detect the statement year/period from page 1 text.
  * Looks for patterns like "Statement Period: 03/01/2026 - 03/31/2026"
  * or "March 1, 2026 through March 31, 2026".
@@ -323,10 +345,26 @@ export async function parseBankStatement(pdfData, sourceKind = 'bank') {
   const period = detectPeriod(fullText);
   const year = period?.year || '';
 
+  // Walk rows top-to-bottom. Track the most recent account-number header so we
+  // can tag each transaction with the account it belongs to. Statements that
+  // bundle multiple accounts (e.g. rental 5710 + personal 5711 + 0410) then
+  // let the import UI filter to just the rental account.
+  const accountsSeen = new Set();
+  let currentAccount = null;
   const transactions = [];
   for (const row of allRows) {
+    const lineText = rowToText(row);
+    const acct = detectAccountOnRow(lineText);
+    if (acct) {
+      currentAccount = acct;
+      accountsSeen.add(acct);
+      continue; // header row, not a transaction
+    }
     const tx = parseRow(row, year, sourceKind);
-    if (tx) transactions.push(tx);
+    if (tx) {
+      tx.account = currentAccount; // may be null if no header seen yet
+      transactions.push(tx);
+    }
   }
 
   // De-dup within the same statement (some statements repeat summary lines).
@@ -342,6 +380,7 @@ export async function parseBankStatement(pdfData, sourceKind = 'bank') {
   return {
     period,
     transactions: deduped,
+    accounts: [...accountsSeen],   // distinct account suffixes found in the PDF
     rawLines: fullText.split('\n'),
   };
 }
