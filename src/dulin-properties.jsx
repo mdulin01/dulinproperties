@@ -1098,15 +1098,27 @@ export default function DulinProperties() {
                     const regularExpenses = expenses.filter(e => !e.isTemplate);
                     const ytdAll = regularExpenses.filter(e => (e.date || '').startsWith(yearStr));
 
-                    // YTD rent income = paid rentPayments PLUS any expense-collection rows
-                    // mistakenly stored with an income category (parser bug; see comment on
-                    // isMistaggedIncome). Reclassifying them visually so gross income looks right.
+                    // YTD income, split rent vs interest vs other so the dashboard can
+                    // show them separately (mom tracks bank interest apart from rent).
+                    // Includes expense-collection rows mistakenly stored with an income
+                    // category (parser bug; see isMistaggedIncome).
+                    const paidYtdRent = rentPayments
+                      .filter(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(yearStr));
+                    const ytdInterest = paidYtdRent
+                      .filter(r => r.category === 'interest')
+                      .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+                    const ytdOtherIncome = paidYtdRent
+                      .filter(r => r.category === 'refund' || r.category === 'other')
+                      .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
                     const ytdMistaggedRentAsIncome = ytdAll.filter(isMistaggedIncome)
                       .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
-                    const ytdRent = rentPayments
-                      .filter(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(yearStr))
+                    // Pure rent (excludes interest + other-income categories).
+                    const ytdRentOnly = paidYtdRent
+                      .filter(r => !['interest', 'refund', 'other'].includes(r.category))
                       .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0)
                       + ytdMistaggedRentAsIncome;
+                    // Gross income = rent + interest + other.
+                    const ytdRent = ytdRentOnly + ytdInterest + ytdOtherIncome;
                     const ytdMgmtFees = ytdAll.filter(isMgmtFee).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                     const ytdPropertyExp = ytdAll.filter(isPropertyExpense).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                     const ytdBusinessOpEx = ytdAll.filter(isBusinessOp).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
@@ -1168,6 +1180,13 @@ export default function DulinProperties() {
                           <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center">
                             <p className="text-[10px] font-semibold text-emerald-400/70 uppercase tracking-wider mb-1">YTD Gross Income</p>
                             <p className="text-xl font-bold text-emerald-400">{formatCurrency(ytdRent)}</p>
+                            {(ytdInterest > 0 || ytdOtherIncome > 0) && (
+                              <p className="text-[9px] text-white/30 mt-1">
+                                Rent: {formatCurrency(ytdRentOnly)}
+                                {ytdInterest > 0 ? ` · Interest: ${formatCurrency(ytdInterest)}` : ''}
+                                {ytdOtherIncome > 0 ? ` · Other: ${formatCurrency(ytdOtherIncome)}` : ''}
+                              </p>
+                            )}
                           </div>
                           <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 text-center">
                             <p className="text-[10px] font-semibold text-red-400/70 uppercase tracking-wider mb-1">YTD Expenses</p>
@@ -2412,7 +2431,16 @@ export default function DulinProperties() {
             payment={typeof showAddRentModal === 'object' ? showAddRentModal : null}
             properties={properties}
             onSave={(paymentData) => {
-              if (typeof showAddRentModal === 'object' && showAddRentModal.id) {
+              if (Array.isArray(paymentData)) {
+                // Split deposit — one bank deposit divided across properties.
+                const stamped = paymentData.map((p, i) => ({
+                  ...p,
+                  id: `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+                  createdAt: new Date().toISOString(),
+                  createdBy: currentUser,
+                }));
+                bulkAddRentPayments(stamped);
+              } else if (typeof showAddRentModal === 'object' && showAddRentModal.id) {
                 updateRentPayment(showAddRentModal.id, paymentData);
               } else {
                 addRentPayment({ ...paymentData, id: Date.now().toString(), createdAt: new Date().toISOString(), createdBy: currentUser });

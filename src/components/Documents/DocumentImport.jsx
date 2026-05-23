@@ -835,9 +835,12 @@ export default function DocumentImport({
         }
         if (result.period?.monthStr) setDetectedMonth(result.period.monthStr);
         // Surface any distinct account numbers found so the user can filter to
-        // just the rental account if the PDF bundled several.
-        setDetectedAccounts(result.accounts || []);
-        setAccountFilter('all');
+        // just the rental account if the PDF bundled several. The rental account
+        // (5710) is always the default when present, since the others (5711 /
+        // 0410) are personal and entered manually if ever needed.
+        const accts = result.accounts || [];
+        setDetectedAccounts(accts);
+        setAccountFilter(accts.includes('5710') ? '5710' : 'all');
 
         mapped = result.transactions.map((tx, idx) => {
           const isIncome = tx.flowType === 'income';
