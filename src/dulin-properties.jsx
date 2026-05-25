@@ -10,7 +10,8 @@ import {
 } from './constants';
 import {
   formatDate, formatCurrency, validateFileSize, isHeicFile, getSafeFileName,
-  isTaskDueToday, isTaskDueThisWeek, taskMatchesHorizon, getDaysUntil, getLeaseStatus
+  isTaskDueToday, isTaskDueThisWeek, taskMatchesHorizon, getDaysUntil, getLeaseStatus,
+  parseAmountQuery, matchesAmountQuery
 } from './utils';
 
 // Components
@@ -799,6 +800,11 @@ export default function DulinProperties() {
   const getSearchResults = () => {
     if (!searchQuery.trim()) return [];
     const q = searchQuery.toLowerCase();
+    // Also parse the query as a dollar amount so "$836.10" / "836.10" / "725"
+    // find matching rent payments and expenses by amount (mom searches by amount
+    // to match against statements).
+    const qAmt = parseAmountQuery(searchQuery);
+    const amtMatch = (val) => qAmt !== null && matchesAmountQuery(val, qAmt, searchQuery);
     const results = [];
 
     sharedTasks.filter(t => t.title?.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q))
@@ -811,11 +817,11 @@ export default function DulinProperties() {
       .forEach(p => results.push({ type: 'property', item: p, section: 'rentals' }));
     documents.filter(d => d.title?.toLowerCase().includes(q) || d.notes?.toLowerCase().includes(q))
       .forEach(d => results.push({ type: 'document', item: d, section: 'documents' }));
-    transactions.filter(t => t.description?.toLowerCase().includes(q))
+    transactions.filter(t => t.description?.toLowerCase().includes(q) || amtMatch(t.amount))
       .forEach(t => results.push({ type: 'transaction', item: t, section: 'financials' }));
-    rentPayments.filter(r => (r.tenantName || '').toLowerCase().includes(q) || (r.propertyName || '').toLowerCase().includes(q) || (r.month || '').includes(q))
+    rentPayments.filter(r => (r.tenantName || '').toLowerCase().includes(q) || (r.propertyName || '').toLowerCase().includes(q) || (r.month || '').includes(q) || amtMatch(r.amount))
       .forEach(r => results.push({ type: 'rent', item: r, section: 'rent' }));
-    expenses.filter(e => (e.description || '').toLowerCase().includes(q) || (e.vendor || '').toLowerCase().includes(q) || (e.propertyName || '').toLowerCase().includes(q))
+    expenses.filter(e => (e.description || '').toLowerCase().includes(q) || (e.vendor || '').toLowerCase().includes(q) || (e.propertyName || '').toLowerCase().includes(q) || amtMatch(e.amount))
       .forEach(e => results.push({ type: 'expense', item: e, section: 'expenses' }));
 
     return results;
@@ -1035,7 +1041,20 @@ export default function DulinProperties() {
                       if (result.type === 'task') setShowAddTaskModal(result.item);
                     }} className="w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition">
                       <span className="text-xs text-white/40 uppercase">{result.type}</span>
-                      <p className="text-sm text-white truncate">{result.item.title || result.item.name || result.item.description}</p>
+                      <p className="text-sm text-white truncate">
+                        {(() => {
+                          const it = result.item;
+                          if (result.type === 'rent') {
+                            const who = it.tenantName || it.propertyName || 'Rent';
+                            return `${who} — ${formatCurrency(it.amount || 0)}${it.month ? ` (${it.month})` : ''}`;
+                          }
+                          if (result.type === 'expense') {
+                            const what = it.description || it.vendor || it.propertyName || 'Expense';
+                            return `${what} — ${formatCurrency(it.amount || 0)}`;
+                          }
+                          return it.title || it.name || it.description || '(untitled)';
+                        })()}
+                      </p>
                     </button>
                   ))}
                   {getSearchResults().length === 0 && (
@@ -1363,23 +1382,29 @@ export default function DulinProperties() {
                     //   Repairs    = repair + plumbing + electrical + hvac + appliance + maintenance
                     //   Supplies   = supplies + cleaning + pest-control + landscaping
                     //   Utilities  = utilities + internet
+                    //   Insurance  = insurance
                     //   HOA        = hoa
-                    //   Other      = insurance + mortgage + mortgage-interest + taxes + property-tax
-                    //                + legal + software + mileage + other
-                    //                (anything property-tied that isn't already counted above and isn't a disbursement)
+                    //   Other      = CATCH-ALL: every non-distribution expense not in a named
+                    //                bucket above (mortgage, taxes, legal, software, mileage,
+                    //                other, AND all op-* operating categories). Computed as the
+                    //                remainder so nothing silently disappears from the report.
                     const REPAIRS_CATS  = ['repair', 'plumbing', 'electrical', 'hvac', 'appliance', 'maintenance'];
                     const SUPPLIES_CATS = ['supplies', 'cleaning', 'pest-control', 'landscaping'];
                     const UTIL_CATS     = ['utilities', 'internet'];
-                    const OTHER_CATS    = ['insurance', 'mortgage', 'mortgage-interest', 'taxes', 'property-tax', 'legal', 'software', 'mileage', 'other'];
-                    const sumExpenses = (exps) => ({
-                      mgmtFee:   exps.filter(e => e.category === 'management-fee').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
-                      repairs:   exps.filter(e => REPAIRS_CATS.includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
-                      supplies:  exps.filter(e => SUPPLIES_CATS.includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
-                      utilities: exps.filter(e => UTIL_CATS.includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
-                      hoa:       exps.filter(e => e.category === 'hoa').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
-                      other:     exps.filter(e => OTHER_CATS.includes(e.category)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
-                      dist:      exps.filter(e => e.category === 'owner-distribution').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
-                    });
+                    const sumExpenses = (exps) => {
+                      const sumBy = (pred) => exps.filter(pred).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                      const mgmtFee   = sumBy(e => e.category === 'management-fee');
+                      const repairs   = sumBy(e => REPAIRS_CATS.includes(e.category));
+                      const supplies  = sumBy(e => SUPPLIES_CATS.includes(e.category));
+                      const utilities = sumBy(e => UTIL_CATS.includes(e.category));
+                      const insurance = sumBy(e => e.category === 'insurance');
+                      const hoa       = sumBy(e => e.category === 'hoa');
+                      const dist      = sumBy(e => e.category === 'owner-distribution');
+                      const nonDist   = sumBy(e => e.category !== 'owner-distribution');
+                      // Catch-all remainder; round to cents and clamp tiny float noise.
+                      const other = Math.max(0, Math.round((nonDist - mgmtFee - repairs - supplies - utilities - insurance - hoa) * 100) / 100);
+                      return { mgmtFee, repairs, supplies, utilities, insurance, hoa, other, dist };
+                    };
 
                     const reportData = mgrOrder.map(mgr => {
                       const mgrProps = properties.filter(p => getManager(p.color) === mgr);
@@ -1410,6 +1435,7 @@ export default function DulinProperties() {
                           repairs:   managed.repairs   + owner.repairs,
                           supplies:  managed.supplies  + owner.supplies,
                           utilities: managed.utilities + owner.utilities,
+                          insurance: managed.insurance + owner.insurance,
                           hoa:       managed.hoa       + owner.hoa,
                           other:     managed.other     + owner.other,
                           dist:      managed.dist      + owner.dist,
@@ -1418,22 +1444,24 @@ export default function DulinProperties() {
                           repairs:   managed.repairs,
                           supplies:  managed.supplies,
                           utilities: managed.utilities,
-                          hoa:       managed.hoa   + owner.hoa,   // always combined
-                          other:     managed.other + owner.other, // always combined
+                          // Insurance / HOA / Other are owner-paid by nature — always combined.
+                          insurance: managed.insurance + owner.insurance,
+                          hoa:       managed.hoa   + owner.hoa,
+                          other:     managed.other + owner.other,
                           dist:      managed.dist,
                         };
                         return {
                           name: `${p.emoji || '🏠'} ${p.name}`, rent,
                           mgmtFee: view.mgmtFee, repairs: view.repairs,
                           supplies: view.supplies, utilities: view.utilities,
-                          hoa: view.hoa, other: view.other,
+                          insurance: view.insurance, hoa: view.hoa, other: view.other,
                           dist: view.dist,
                           // Separate owner-paid totals (still tracked for the "Owner Paid" row).
-                          // HOA + Other are zeroed here because they already appear in the
-                          // property row above — preventing double-counting in the UI.
+                          // Insurance / HOA / Other are zeroed here because they already appear
+                          // in the property row above — preventing double-counting in the UI.
                           ownerMgmtFee: owner.mgmtFee, ownerRepairs: owner.repairs,
                           ownerSupplies: owner.supplies, ownerUtilities: owner.utilities,
-                          ownerHoa: 0, ownerOther: 0,
+                          ownerInsurance: 0, ownerHoa: 0, ownerOther: 0,
                           ownerDist: owner.dist,
                         };
                       });
@@ -1458,14 +1486,15 @@ export default function DulinProperties() {
                         repairs:   isSelfManaged ? groupManaged.repairs   + groupOwner.repairs   : groupManaged.repairs,
                         supplies:  isSelfManaged ? groupManaged.supplies  + groupOwner.supplies  : groupManaged.supplies,
                         utilities: isSelfManaged ? groupManaged.utilities + groupOwner.utilities : groupManaged.utilities,
-                        // HOA + Other always combined — see note on `view` above.
+                        // Insurance + HOA + Other always combined — see note on `view` above.
+                        insurance: groupManaged.insurance + groupOwner.insurance,
                         hoa:       groupManaged.hoa   + groupOwner.hoa,
                         other:     groupManaged.other + groupOwner.other,
                         dist:      isSelfManaged ? groupManaged.dist      + groupOwner.dist      : groupManaged.dist,
                       };
-                      // HOA + Other are excluded from the "+ Owner Paid" row totals
+                      // Insurance + HOA + Other are excluded from the "+ Owner Paid" row totals
                       // because they're already shown inline in property rows.
-                      const ownerTotals = { ...groupOwner, hoa: 0, other: 0 };
+                      const ownerTotals = { ...groupOwner, insurance: 0, hoa: 0, other: 0 };
                       // Managed-only is what came through this manager's statement.
                       const managedTotals = { rent: groupRent, ...groupManaged };
                       const hasOwnerExpenses = Object.values(ownerTotals).some(v => v > 0);
@@ -1473,20 +1502,48 @@ export default function DulinProperties() {
                       return { manager: mgr, props: propRows, totals, ownerTotals, managedTotals, hasOwnerExpenses };
                     });
 
+                    // General / Owner-Paid group — expenses with NO property (operating
+                    // overhead, or anything tagged "General"). These belong to no management
+                    // company, so without this group they'd silently never appear in the
+                    // Monthly Report or the month total. Each expense is shown as its own row.
+                    const noPropExp = monthExp.filter(e => !e.propertyId && e.category !== 'owner-distribution');
+                    if (noPropExp.length > 0) {
+                      const ZERO_OWNER = { ownerMgmtFee: 0, ownerRepairs: 0, ownerSupplies: 0, ownerUtilities: 0, ownerInsurance: 0, ownerHoa: 0, ownerOther: 0, ownerDist: 0 };
+                      const generalRows = noPropExp.map(e => {
+                        const b = sumExpenses([e]);
+                        return { name: e.description || e.vendor || e.category || 'Expense', rent: 0, ...b, ...ZERO_OWNER };
+                      });
+                      const generalSum = sumExpenses(noPropExp);
+                      const zeroOwnerTotals = { mgmtFee: 0, repairs: 0, supplies: 0, utilities: 0, insurance: 0, hoa: 0, other: 0, dist: 0 };
+                      reportData.push({
+                        manager: 'General / Owner-Paid',
+                        isGeneral: true,
+                        props: generalRows,
+                        totals: { rent: 0, ...generalSum },
+                        ownerTotals: zeroOwnerTotals,
+                        managedTotals: { rent: 0, ...generalSum },
+                        hasOwnerExpenses: false,
+                      });
+                    }
+
                     // Grand total should include EVERYTHING (managed + owner-paid) so
                     // mom's bottom-line month total isn't artificially low. Property
                     // rows for B&H/Absolute show only managed; we add owner-paid back
                     // into the grand total here.
-                    const grandTotal = reportData.reduce((t, g) => ({
-                      rent:      t.rent      + g.totals.rent,
-                      mgmtFee:   t.mgmtFee   + g.totals.mgmtFee   + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.mgmtFee),
-                      repairs:   t.repairs   + g.totals.repairs   + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.repairs),
-                      supplies:  t.supplies  + g.totals.supplies  + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.supplies),
-                      utilities: t.utilities + g.totals.utilities + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.utilities),
-                      hoa:       t.hoa       + g.totals.hoa       + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.hoa),
-                      other:     t.other     + g.totals.other     + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.other),
-                      dist:      t.dist      + g.totals.dist      + (g.manager === 'Dianne Dulin' ? 0 : g.ownerTotals.dist),
-                    }), { rent: 0, mgmtFee: 0, repairs: 0, supplies: 0, utilities: 0, hoa: 0, other: 0, dist: 0 });
+                    const grandTotal = reportData.reduce((t, g) => {
+                      const addOwner = (g.manager === 'Dianne Dulin' || g.isGeneral) ? 0 : 1;
+                      return {
+                        rent:      t.rent      + g.totals.rent,
+                        mgmtFee:   t.mgmtFee   + g.totals.mgmtFee   + addOwner * g.ownerTotals.mgmtFee,
+                        repairs:   t.repairs   + g.totals.repairs   + addOwner * g.ownerTotals.repairs,
+                        supplies:  t.supplies  + g.totals.supplies  + addOwner * g.ownerTotals.supplies,
+                        utilities: t.utilities + g.totals.utilities + addOwner * g.ownerTotals.utilities,
+                        insurance: t.insurance + g.totals.insurance + addOwner * g.ownerTotals.insurance,
+                        hoa:       t.hoa       + g.totals.hoa       + addOwner * g.ownerTotals.hoa,
+                        other:     t.other     + g.totals.other     + addOwner * g.ownerTotals.other,
+                        dist:      t.dist      + g.totals.dist      + addOwner * g.ownerTotals.dist,
+                      };
+                    }, { rent: 0, mgmtFee: 0, repairs: 0, supplies: 0, utilities: 0, insurance: 0, hoa: 0, other: 0, dist: 0 });
 
                     return (
                       <div className="bg-white/[0.03] border border-white/10 rounded-2xl overflow-hidden mb-6">
@@ -1539,13 +1596,14 @@ export default function DulinProperties() {
                         </div>
 
                         {/* Column headers — matches mom's spreadsheet */}
-                        <div className="grid grid-cols-10 gap-1 px-4 py-2 text-[9px] font-semibold text-white/30 uppercase tracking-wider border-b border-white/5">
+                        <div className="grid grid-cols-11 gap-1 px-4 py-2 text-[9px] font-semibold text-white/30 uppercase tracking-wider border-b border-white/5">
                           <span className="col-span-2">Property</span>
                           <span className="text-right">Rent Paid</span>
                           <span className="text-right">Manage. Fee</span>
                           <span className="text-right">Repairs</span>
                           <span className="text-right">Supplies</span>
                           <span className="text-right">Utilities</span>
+                          <span className="text-right">Insurance</span>
                           <span className="text-right">HOA</span>
                           <span className="text-right">Other</span>
                           <span className="text-right">Owner Dist.</span>
@@ -1571,38 +1629,40 @@ export default function DulinProperties() {
                               </div>
                               {/* Property rows — all properties shown */}
                               {group.props.map((row, ri) => (
-                                <div key={ri} className="grid grid-cols-10 gap-1 px-4 py-1.5 border-b border-white/[0.03] hover:bg-white/[0.02]">
+                                <div key={ri} className="grid grid-cols-11 gap-1 px-4 py-1.5 border-b border-white/[0.03] hover:bg-white/[0.02]">
                                   <span className="col-span-2 text-xs text-white/70 truncate">{row.name}</span>
                                   <span className="text-xs text-right text-emerald-400/80">{row.rent > 0 ? formatCurrency(row.rent) : '—'}</span>
                                   <span className="text-xs text-right text-yellow-400/60">{row.mgmtFee > 0 ? formatCurrency(row.mgmtFee) : '—'}</span>
                                   <span className="text-xs text-right text-red-400/60">{row.repairs > 0 ? formatCurrency(row.repairs) : '—'}</span>
                                   <span className="text-xs text-right text-amber-400/60">{row.supplies > 0 ? formatCurrency(row.supplies) : '—'}</span>
                                   <span className="text-xs text-right text-orange-400/60">{row.utilities > 0 ? formatCurrency(row.utilities) : '—'}</span>
+                                  <span className="text-xs text-right text-sky-400/60">{row.insurance > 0 ? formatCurrency(row.insurance) : '—'}</span>
                                   <span className="text-xs text-right text-cyan-400/60">{row.hoa > 0 ? formatCurrency(row.hoa) : '—'}</span>
                                   <span className="text-xs text-right text-rose-400/60">{row.other > 0 ? formatCurrency(row.other) : '—'}</span>
                                   <span className="text-xs text-right text-blue-400/60">{row.dist > 0 ? formatCurrency(row.dist) : '—'}</span>
                                 </div>
                               ))}
                               {/* Manager subtotal (statement/managed expenses only) */}
-                              <div className={`grid grid-cols-10 gap-1 px-4 py-2 border-b border-white/5 ${(reconciliations[selectedMonth]?.[group.manager]?.confirmed || reconciliations[selectedMonth]?.[group.manager]?.autoMatch) ? 'bg-green-500/[0.06]' : 'bg-white/[0.02]'}`}>
+                              <div className={`grid grid-cols-11 gap-1 px-4 py-2 border-b border-white/5 ${(reconciliations[selectedMonth]?.[group.manager]?.confirmed || reconciliations[selectedMonth]?.[group.manager]?.autoMatch) ? 'bg-green-500/[0.06]' : 'bg-white/[0.02]'}`}>
                                 <span className="col-span-2 text-xs font-semibold text-white/50 uppercase underline decoration-white/20 underline-offset-2">Subtotal</span>
                                 <span className="text-xs text-right font-semibold text-emerald-400/70">{group.managedTotals.rent > 0 ? <span className="inline-block border border-emerald-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.rent)}</span> : '—'}</span>
                                 <span className="text-xs text-right font-semibold text-yellow-400/50">{group.managedTotals.mgmtFee > 0 ? <span className="inline-block border border-yellow-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.mgmtFee)}</span> : '—'}</span>
                                 <span className="text-xs text-right font-semibold text-red-400/50">{group.managedTotals.repairs > 0 ? <span className="inline-block border border-red-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.repairs)}</span> : '—'}</span>
                                 <span className="text-xs text-right font-semibold text-amber-400/50">{group.managedTotals.supplies > 0 ? <span className="inline-block border border-amber-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.supplies)}</span> : '—'}</span>
                                 <span className="text-xs text-right font-semibold text-orange-400/50">{group.managedTotals.utilities > 0 ? <span className="inline-block border border-orange-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.utilities)}</span> : '—'}</span>
+                                <span className="text-xs text-right font-semibold text-sky-400/50">{group.managedTotals.insurance > 0 ? <span className="inline-block border border-sky-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.insurance)}</span> : '—'}</span>
                                 <span className="text-xs text-right font-semibold text-cyan-400/50">{group.managedTotals.hoa > 0 ? <span className="inline-block border border-cyan-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.hoa)}</span> : '—'}</span>
                                 <span className="text-xs text-right font-semibold text-rose-400/50">{group.managedTotals.other > 0 ? <span className="inline-block border border-rose-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.other)}</span> : '—'}</span>
                                 <span className="text-xs text-right font-semibold text-blue-400/50">{group.managedTotals.dist > 0 ? <span className="inline-block border border-blue-400/20 rounded-full px-2 py-0.5">{formatCurrency(group.managedTotals.dist)}</span> : '—'}</span>
                               </div>
                               {/* Owner-paid expenses row — shown for managed groups, expandable */}
-                              {group.manager !== 'Dianne Dulin' && (() => {
+                              {group.manager !== 'Dianne Dulin' && !group.isGeneral && (() => {
                                 const isOwnerExpanded = expandedOwnerPaid[group.manager];
-                                const ownerPropRows = group.props.filter(r => r.ownerRepairs > 0 || r.ownerSupplies > 0 || r.ownerUtilities > 0 || r.ownerMgmtFee > 0 || r.ownerHoa > 0 || r.ownerOther > 0 || r.ownerDist > 0);
+                                const ownerPropRows = group.props.filter(r => r.ownerRepairs > 0 || r.ownerSupplies > 0 || r.ownerUtilities > 0 || r.ownerMgmtFee > 0 || r.ownerInsurance > 0 || r.ownerHoa > 0 || r.ownerOther > 0 || r.ownerDist > 0);
                                 return (
                                   <>
                                     <div
-                                      className={`grid grid-cols-10 gap-1 px-4 py-1.5 border-b border-white/5 ${group.hasOwnerExpenses ? 'cursor-pointer hover:bg-white/[0.02] transition' : ''}`}
+                                      className={`grid grid-cols-11 gap-1 px-4 py-1.5 border-b border-white/5 ${group.hasOwnerExpenses ? 'cursor-pointer hover:bg-white/[0.02] transition' : ''}`}
                                       onClick={() => { if (group.hasOwnerExpenses) setExpandedOwnerPaid(prev => ({ ...prev, [group.manager]: !prev[group.manager] })); }}
                                     >
                                       <span className="col-span-2 text-xs font-semibold text-amber-400/60 uppercase flex items-center gap-1">
@@ -1616,6 +1676,7 @@ export default function DulinProperties() {
                                       <span className="text-xs text-right text-red-400/40">{group.ownerTotals.repairs > 0 ? formatCurrency(group.ownerTotals.repairs) : '—'}</span>
                                       <span className="text-xs text-right text-amber-400/40">{group.ownerTotals.supplies > 0 ? formatCurrency(group.ownerTotals.supplies) : '—'}</span>
                                       <span className="text-xs text-right text-orange-400/40">{group.ownerTotals.utilities > 0 ? formatCurrency(group.ownerTotals.utilities) : '—'}</span>
+                                      <span className="text-xs text-right text-sky-400/40">{group.ownerTotals.insurance > 0 ? formatCurrency(group.ownerTotals.insurance) : '—'}</span>
                                       <span className="text-xs text-right text-cyan-400/40">{group.ownerTotals.hoa > 0 ? formatCurrency(group.ownerTotals.hoa) : '—'}</span>
                                       <span className="text-xs text-right text-rose-400/40">{group.ownerTotals.other > 0 ? formatCurrency(group.ownerTotals.other) : '—'}</span>
                                       <span className="text-xs text-right text-blue-400/40">{group.ownerTotals.dist > 0 ? formatCurrency(group.ownerTotals.dist) : '—'}</span>
@@ -1623,13 +1684,14 @@ export default function DulinProperties() {
                                     {isOwnerExpanded && ownerPropRows.length > 0 && (
                                       <div>
                                         {ownerPropRows.map((row, ri) => (
-                                          <div key={ri} className="grid grid-cols-10 gap-1 px-4 py-1 pl-8 border-b border-white/[0.02]">
+                                          <div key={ri} className="grid grid-cols-11 gap-1 px-4 py-1 pl-8 border-b border-white/[0.02]">
                                             <span className="col-span-2 text-xs text-amber-400/50 truncate">{row.name}</span>
                                             <span className="text-xs text-right text-white/15">—</span>
                                             <span className="text-xs text-right text-yellow-400/30">{row.ownerMgmtFee > 0 ? formatCurrency(row.ownerMgmtFee) : '—'}</span>
                                             <span className="text-xs text-right text-red-400/30">{row.ownerRepairs > 0 ? formatCurrency(row.ownerRepairs) : '—'}</span>
                                             <span className="text-xs text-right text-amber-400/30">{row.ownerSupplies > 0 ? formatCurrency(row.ownerSupplies) : '—'}</span>
                                             <span className="text-xs text-right text-orange-400/30">{row.ownerUtilities > 0 ? formatCurrency(row.ownerUtilities) : '—'}</span>
+                                            <span className="text-xs text-right text-sky-400/30">{row.ownerInsurance > 0 ? formatCurrency(row.ownerInsurance) : '—'}</span>
                                             <span className="text-xs text-right text-cyan-400/30">{row.ownerHoa > 0 ? formatCurrency(row.ownerHoa) : '—'}</span>
                                             <span className="text-xs text-right text-rose-400/30">{row.ownerOther > 0 ? formatCurrency(row.ownerOther) : '—'}</span>
                                             <span className="text-xs text-right text-blue-400/30">{row.ownerDist > 0 ? formatCurrency(row.ownerDist) : '—'}</span>
@@ -1645,13 +1707,14 @@ export default function DulinProperties() {
                         })}
 
                         {/* Grand total */}
-                        <div className="grid grid-cols-10 gap-1 px-4 py-3 bg-white/[0.04] border-t border-white/10">
+                        <div className="grid grid-cols-11 gap-1 px-4 py-3 bg-white/[0.04] border-t border-white/10">
                           <span className="col-span-2 text-xs font-bold text-white">{isYtd ? 'YTD Total' : 'Month Total'}</span>
                           <span className="text-xs text-right font-bold text-emerald-400">{formatCurrency(grandTotal.rent)}</span>
                           <span className="text-xs text-right font-bold text-yellow-400/70">{formatCurrency(grandTotal.mgmtFee)}</span>
                           <span className="text-xs text-right font-bold text-red-400">{formatCurrency(grandTotal.repairs)}</span>
                           <span className="text-xs text-right font-bold text-amber-400">{formatCurrency(grandTotal.supplies)}</span>
                           <span className="text-xs text-right font-bold text-orange-400">{formatCurrency(grandTotal.utilities)}</span>
+                          <span className="text-xs text-right font-bold text-sky-400">{formatCurrency(grandTotal.insurance)}</span>
                           <span className="text-xs text-right font-bold text-cyan-400">{formatCurrency(grandTotal.hoa)}</span>
                           <span className="text-xs text-right font-bold text-rose-400">{formatCurrency(grandTotal.other)}</span>
                           <span className="text-xs text-right font-bold text-blue-400">{formatCurrency(grandTotal.dist)}</span>
