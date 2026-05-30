@@ -3,6 +3,8 @@ import DocumentImport from '../Documents/DocumentImport';
 import ValidateTransactions from './ValidateTransactions';
 import ManagedRentals from './ManagedRentals';
 import PropertyInfo from './PropertyInfo';
+import NextSteps from '../NextSteps';
+import Tip from '../Tip';
 
 const TABS = [
   { id: 'statements', icon: '📥', label: 'Import Statements & Reports',
@@ -72,6 +74,31 @@ export default function InputDataPage({
 
       {/* Current-tab hint */}
       <p className="text-xs text-white/40 -mt-3">{current.hint}</p>
+
+      {/* "What's next" panel — only on the Statements tab where mom starts her
+          monthly workflow. Auto-generated from the actual data. */}
+      {active === 'statements' && (
+        <NextSteps
+          properties={properties}
+          expenses={expenses}
+          rentPayments={rentPayments}
+          onJumpToImport={() => setActive('statements')}
+          onJumpToValidate={() => setActive('validate')}
+          onJumpToExpenseSearch={() => setActive('validate')}
+        />
+      )}
+
+      {/* Contextual tips */}
+      {active === 'statements' && (
+        <Tip tipKey="ffb-5710-default" variant="info">
+          When you import an <strong>FFB Bank</strong> statement that contains several accounts, the importer now defaults to just account <strong>•••5710</strong> (your rental). Transactions on 5711 / 0410 are skipped — add those manually if you ever need them.
+        </Tip>
+      )}
+      {active === 'validate' && (
+        <Tip tipKey="validate-needs-review" variant="info">
+          This view defaults to <strong>Needs review</strong>. If you can't find something you remember importing, switch to <strong>Validated</strong> or <strong>All</strong> in the upper-right filter.
+        </Tip>
+      )}
 
       {/* Panels */}
       {active === 'statements' && (

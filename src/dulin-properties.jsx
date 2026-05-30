@@ -1783,7 +1783,9 @@ export default function DulinProperties() {
                     if (count === 0) return null;
                     return (
                       <button
-                        onClick={() => setActiveSection('actions')}
+                        // Jump to Input Data where the new "What's next" panel
+                        // lays out every action with a clickable next step.
+                        onClick={() => setActiveSection('input')}
                         className="w-full bg-amber-500/10 border border-amber-500/20 rounded-2xl px-4 py-3 flex items-center justify-between hover:bg-amber-500/15 transition mb-6"
                       >
                         <span className="text-sm text-amber-400 font-medium flex items-center gap-2">
