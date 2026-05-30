@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, Trash2, Split, Plus } from 'lucide-react';
 import { rentStatuses, incomeCategories } from '../../constants';
 import { getPropertyTenants } from '../../hooks/useProperties';
+import Combobox from '../Combobox';
 
 export default function AddRentPaymentModal({ payment, properties, onSave, onDelete, onClose }) {
   const isEditing = payment && payment.id;
@@ -46,6 +47,11 @@ export default function AddRentPaymentModal({ payment, properties, onSave, onDel
       setForm(f => ({ ...f, month: currentMonth, datePaid: now.toISOString().split('T')[0] }));
     }
   }, [payment, isEditing]);
+
+  const propertyOptions = useMemo(
+    () => properties.map(p => ({ value: String(p.id), label: p.name || '(unnamed)', emoji: p.emoji || '🏠' })),
+    [properties]
+  );
 
   // Auto-fill tenant/property name when property selected
   const handlePropertyChange = (propertyId) => {
@@ -139,17 +145,15 @@ export default function AddRentPaymentModal({ payment, properties, onSave, onDel
           {/* Property — single select (hidden in split mode) */}
           {!splitMode && (
             <div>
-              <label className="text-xs text-white/40 mb-1 block">Property</label>
-              <select
+              <label className="text-xs text-white/40 mb-1 block" htmlFor="rent-prop">Property</label>
+              <Combobox
+                id="rent-prop"
                 value={form.propertyId}
-                onChange={e => handlePropertyChange(e.target.value)}
-                className="w-full px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500/50"
-              >
-                <option value="">Select property...</option>
-                {properties.map(p => (
-                  <option key={p.id} value={p.id}>{p.emoji || '🏠'} {p.name}</option>
-                ))}
-              </select>
+                onChange={handlePropertyChange}
+                options={propertyOptions}
+                placeholder="Type to search…"
+                className="px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50"
+              />
             </div>
           )}
 
@@ -214,16 +218,15 @@ export default function AddRentPaymentModal({ payment, properties, onSave, onDel
               </div>
               {splitRows.map((r, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <select
-                    value={r.propertyId}
-                    onChange={e => updateSplitRow(i, 'propertyId', e.target.value)}
-                    className="flex-1 px-2 py-1.5 bg-white/[0.05] border border-white/[0.08] rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
-                  >
-                    <option value="">Select property…</option>
-                    {properties.map(p => (
-                      <option key={p.id} value={p.id}>{p.emoji || '🏠'} {p.name}</option>
-                    ))}
-                  </select>
+                  <div className="flex-1">
+                    <Combobox
+                      value={r.propertyId}
+                      onChange={(v) => updateSplitRow(i, 'propertyId', v)}
+                      options={propertyOptions}
+                      placeholder="Type property…"
+                      className="px-2 py-1.5 bg-white/[0.05] border border-white/[0.08] rounded-lg text-xs text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50"
+                    />
+                  </div>
                   <input
                     type="number"
                     step="0.01"

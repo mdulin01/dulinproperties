@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { Upload, ChevronDown, Check, X, AlertCircle, FileText, Trash2, Loader, Calendar, ArrowRight } from 'lucide-react';
 import HelpTip from '../HelpTip';
 import { expenseCategories, incomeCategories, OPERATING_CATEGORY_VALUES } from '../../constants';
+import Combobox from '../Combobox';
 
 // When an entry is reassigned to "Operating / Business" we switch its expense
 // category to the operating equivalent so it lands in the dashboard's Business
@@ -1535,15 +1536,14 @@ export default function DocumentImport({
                             </select>
                           )}
                         </td>
-                        <td className="px-3 py-2">
-                          <select
+                        <td className="px-3 py-2 min-w-[150px]">
+                          <Combobox
                             value={
                               entry.isOperating || (entry.flowType === 'expense' && OPERATING_CATEGORY_VALUES.has(entry.category))
                                 ? '__operating__'
                                 : (entry.propertyId || '')
                             }
-                            onChange={(e) => {
-                              const val = e.target.value;
+                            onChange={(val) => {
                               if (val === '__operating__') {
                                 // Operating / Business — no property. For expenses, switch the
                                 // category to its operating equivalent so it counts as business
@@ -1562,15 +1562,15 @@ export default function DocumentImport({
                                 updateEntry(idx, 'isOperating', false);
                               }
                             }}
-                            className="text-[10px] px-1.5 py-1 bg-white/[0.05] border border-white/[0.08] rounded-lg text-white/60 focus:outline-none max-w-[130px]"
+                            options={[
+                              { value: '', label: '—' },
+                              { value: '__operating__', label: 'Operating / Business', emoji: '🏢' },
+                              ...properties.map(p => ({ value: String(p.id), label: p.name || '(unnamed)', emoji: p.emoji || '🏠' })),
+                            ]}
+                            placeholder="Type…"
                             disabled={entry.imported}
-                          >
-                            <option value="">—</option>
-                            <option value="__operating__">🏢 Operating / Business</option>
-                            {properties.map(p => (
-                              <option key={p.id} value={String(p.id)}>{p.emoji || '🏠'} {p.name}</option>
-                            ))}
-                          </select>
+                            className="text-[10px] px-1.5 py-1 bg-white/[0.05] border border-white/[0.08] rounded-lg text-white/60 placeholder-white/30 focus:outline-none"
+                          />
                         </td>
                         <td className="px-3 py-2 text-right">
                           <span className={`text-xs font-medium ${entry.flowType === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>

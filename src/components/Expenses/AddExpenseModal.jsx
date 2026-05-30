@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Trash2, ImagePlus, RefreshCw, Split, Plus } from 'lucide-react';
 import { propertyExpenseCategories, operatingExpenseCategories, expenseCategories, OPERATING_CATEGORY_VALUES, recurringFrequencies, MILEAGE_RATE } from '../../constants';
+import Combobox from '../Combobox';
 
 export default function AddExpenseModal({ expense, properties, onSave, onDelete, onClose, onUploadPhoto }) {
   const isEditing = expense && expense.id;
@@ -39,6 +40,13 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
   const [uploading, setUploading] = useState(false);
   const isMileage = form.category === 'mileage';
   const isOperating = OPERATING_CATEGORY_VALUES.has(form.category);
+
+  // Properties as combobox options so mom can type "Sam" and see the list
+  // filter to "1357 Sammons St."
+  const propertyOptions = useMemo(
+    () => properties.map(p => ({ value: String(p.id), label: p.name || '(unnamed)', emoji: p.emoji || '🏠' })),
+    [properties]
+  );
 
   useEffect(() => {
     if (isEditing) {
@@ -369,17 +377,15 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
               {/* Property (hidden for operating categories) */}
               {!isOperating && (
                 <div>
-                  <label className="text-xs text-white/40 mb-1 block">Property</label>
-                  <select
+                  <label className="text-xs text-white/40 mb-1 block" htmlFor="exp-prop-mile">Property</label>
+                  <Combobox
+                    id="exp-prop-mile"
                     value={form.propertyId}
-                    onChange={e => handlePropertyChange(e.target.value)}
-                    className="w-full px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500/50"
-                  >
-                    <option value="">General (no property)</option>
-                    {properties.map(p => (
-                      <option key={p.id} value={p.id}>{p.emoji || '🏠'} {p.name}</option>
-                    ))}
-                  </select>
+                    onChange={handlePropertyChange}
+                    options={[{ value: '', label: 'General (no property)' }, ...propertyOptions]}
+                    placeholder="Type to search…"
+                    className="px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50"
+                  />
                 </div>
               )}
               {isOperating && (
@@ -445,17 +451,15 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
               {/* Property (hidden for operating categories and split mode) */}
               {!isOperating && !splitMode ? (
                 <div>
-                  <label className="text-xs text-white/40 mb-1 block">Property</label>
-                  <select
+                  <label className="text-xs text-white/40 mb-1 block" htmlFor="exp-prop">Property</label>
+                  <Combobox
+                    id="exp-prop"
                     value={form.propertyId}
-                    onChange={e => handlePropertyChange(e.target.value)}
-                    className="w-full px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500/50"
-                  >
-                    <option value="">General (no property)</option>
-                    {properties.map(p => (
-                      <option key={p.id} value={p.id}>{p.emoji || '🏠'} {p.name}</option>
-                    ))}
-                  </select>
+                    onChange={handlePropertyChange}
+                    options={[{ value: '', label: 'General (no property)' }, ...propertyOptions]}
+                    placeholder="Type to search…"
+                    className="px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50"
+                  />
                 </div>
               ) : isOperating ? (
                 <div className="px-3 py-2 bg-amber-500/5 border border-amber-500/20 rounded-xl text-xs text-amber-300/70">
@@ -498,16 +502,15 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
                   </div>
                   {splitRows.map((r, i) => (
                     <div key={i} className="flex items-center gap-2">
-                      <select
-                        value={r.propertyId}
-                        onChange={e => updateSplitRow(i, 'propertyId', e.target.value)}
-                        className="flex-1 px-2 py-1.5 bg-white/[0.05] border border-white/[0.08] rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
-                      >
-                        <option value="">Select property…</option>
-                        {properties.map(p => (
-                          <option key={p.id} value={p.id}>{p.emoji || '🏠'} {p.name}</option>
-                        ))}
-                      </select>
+                      <div className="flex-1">
+                        <Combobox
+                          value={r.propertyId}
+                          onChange={(v) => updateSplitRow(i, 'propertyId', v)}
+                          options={propertyOptions}
+                          placeholder="Type property…"
+                          className="px-2 py-1.5 bg-white/[0.05] border border-white/[0.08] rounded-lg text-xs text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50"
+                        />
+                      </div>
                       <input
                         type="number"
                         step="0.01"
