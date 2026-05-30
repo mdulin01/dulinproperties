@@ -221,7 +221,14 @@ export default function DulinProperties() {
 
   // Property financial breakdown modal
   const [showPropertyBreakdown, setShowPropertyBreakdown] = useState(false);
-  const [propertySortBy, setPropertySortBy] = useState('none');
+  // Property sort defaults to numeric-by-address so mom's list lines up with
+  // the management statements. Persisted across sessions.
+  const [propertySortBy, setPropertySortBy] = useState(() => {
+    try { return localStorage.getItem('propertySortBy') || 'address'; } catch (e) { return 'address'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('propertySortBy', propertySortBy); } catch (e) {}
+  }, [propertySortBy]);
 
   // (Legacy ExpenseReportUpload modal — now superseded by DocumentImport under Documents > Import)
   const [showPropertyImport, setShowPropertyImport] = useState(false);
@@ -1406,8 +1413,15 @@ export default function DulinProperties() {
                       return { mgmtFee, repairs, supplies, utilities, insurance, hoa, other, dist };
                     };
 
+                    // Numeric-by-address sort so property rows line up with the
+                    // order on management statements.
+                    const _streetNum = (p) => {
+                      const m = String(p.address?.street || p.name || '').match(/(\d+)/);
+                      return m ? parseInt(m[1], 10) : Number.POSITIVE_INFINITY;
+                    };
                     const reportData = mgrOrder.map(mgr => {
-                      const mgrProps = properties.filter(p => getManager(p.color) === mgr);
+                      const mgrProps = properties.filter(p => getManager(p.color) === mgr)
+                        .sort((a, b) => _streetNum(a) - _streetNum(b));
                       // For managed-company groups (Absolute, B&H) the property row shows
                       // ONLY what came through that statement. Owner-paid items (FFB, Citi,
                       // Costco) appear in the expandable "Owner Paid" row beneath the
@@ -1843,10 +1857,11 @@ export default function DulinProperties() {
                       <div className="flex gap-1.5 mb-4 items-center justify-between sticky top-[57px] z-20 bg-slate-900/95 backdrop-blur-md py-3 -mx-4 px-4">
                         <div className="flex gap-1.5 flex-wrap">
                           {[
-                            { id: 'none', label: 'All' },
+                            { id: 'address', label: 'Address #' },
                             { id: 'status', label: 'Status' },
                             { id: 'cashflow', label: 'Cash Flow' },
                             { id: 'manager', label: 'Manager' },
+                            { id: 'name', label: 'A → Z' },
                           ].map(s => (
                             <button key={s.id} onClick={() => setPropertySortBy(s.id)}
                               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
@@ -1874,6 +1889,15 @@ export default function DulinProperties() {
                           return 'Absolute';
                         };
 
+                        // Extract leading number from address (e.g. "1357 Sammons St" → 1357)
+                        // so properties list in the same order as on management statements.
+                        const streetNum = (p) => {
+                          const src = (p.address?.street || p.name || '');
+                          const m = String(src).match(/(\d+)/);
+                          return m ? parseInt(m[1], 10) : Number.POSITIVE_INFINITY;
+                        };
+                        const MGR_ORDER = { 'Absolute': 0, 'Barnett & Hill': 1, 'Dianne Dulin': 2 };
+
                         // Sorting
                         const sortedProperties = [...properties].sort((a, b) => {
                           if (propertySortBy === 'status') {
@@ -1888,9 +1912,17 @@ export default function DulinProperties() {
                             return cfB - cfA;
                           }
                           if (propertySortBy === 'manager') {
-                            return getManager(a.color).localeCompare(getManager(b.color));
+                            // Group by manager, then numeric by address within
+                            const ma = MGR_ORDER[getManager(a.color)] ?? 9;
+                            const mb = MGR_ORDER[getManager(b.color)] ?? 9;
+                            if (ma !== mb) return ma - mb;
+                            return streetNum(a) - streetNum(b);
                           }
-                          return 0;
+                          if (propertySortBy === 'name') {
+                            return (a.name || '').localeCompare(b.name || '');
+                          }
+                          // Default 'address': numeric by leading street number.
+                          return streetNum(a) - streetNum(b);
                         });
 
                         return (

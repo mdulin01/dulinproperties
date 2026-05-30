@@ -140,6 +140,66 @@ export const getDomainFromUrl = (url) => {
   }
 };
 
+// Sort properties by mom's preferred order. Persisted in localStorage so the
+// choice carries between pages.
+//   'address-number' = numeric by the leading number in the street address.
+//                      So 1329, 1357, 1617, 1725, 2234, 3510, 5102, ... appear
+//                      in the same order they're listed on management reports.
+//   'name'           = alphabetical by property name.
+//   'manager'        = grouped by management company (Absolute → B&H → Dianne),
+//                      then numeric within each group.
+const extractStreetNumber = (addr) => {
+  if (!addr) return Number.POSITIVE_INFINITY;
+  const m = String(addr).match(/(\d+)/); // first run of digits
+  return m ? parseInt(m[1], 10) : Number.POSITIVE_INFINITY;
+};
+
+const getManagerFromColor = (color) => {
+  if (!color) return 'Absolute';
+  if (color.includes('purple') || color.includes('violet') || color.includes('indigo')) return 'Barnett & Hill';
+  if (color.includes('rose') || color.includes('pink')) return 'Dianne Dulin';
+  return 'Absolute';
+};
+
+const MANAGER_ORDER = { 'Absolute': 0, 'Barnett & Hill': 1, 'Dianne Dulin': 2 };
+
+export const sortProperties = (properties, mode = 'address-number') => {
+  const arr = [...(properties || [])];
+  if (mode === 'name') {
+    arr.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  } else if (mode === 'manager') {
+    arr.sort((a, b) => {
+      const ma = MANAGER_ORDER[getManagerFromColor(a.color)] ?? 99;
+      const mb = MANAGER_ORDER[getManagerFromColor(b.color)] ?? 99;
+      if (ma !== mb) return ma - mb;
+      const na = extractStreetNumber(a.address?.street || a.name || '');
+      const nb = extractStreetNumber(b.address?.street || b.name || '');
+      if (na !== nb) return na - nb;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  } else {
+    // 'address-number' (default)
+    arr.sort((a, b) => {
+      const na = extractStreetNumber(a.address?.street || a.name || '');
+      const nb = extractStreetNumber(b.address?.street || b.name || '');
+      if (na !== nb) return na - nb;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  }
+  return arr;
+};
+
+const PROP_SORT_KEY = 'propertySortMode';
+export const getPropertySortMode = () => {
+  try {
+    const v = localStorage.getItem(PROP_SORT_KEY);
+    return v || 'address-number';
+  } catch (e) { return 'address-number'; }
+};
+export const setPropertySortMode = (mode) => {
+  try { localStorage.setItem(PROP_SORT_KEY, mode); } catch (e) {}
+};
+
 export const getLeaseStatus = (leaseEnd) => {
   if (!leaseEnd) return null;
   const days = getDaysUntil(leaseEnd);

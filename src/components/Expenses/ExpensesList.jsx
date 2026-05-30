@@ -17,6 +17,15 @@ export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDe
   const [yearFilter, setYearFilter] = useState('all');
   const [sortCol, setSortCol] = useState('date');
   const [sortDir, setSortDir] = useState('desc');
+  // 'none' = flat list (default). 'month-property' groups expenses by month
+  // and then by property so mom can compare against the management report at
+  // a glance. Persisted across sessions.
+  const [groupBy, setGroupBy] = useState(() => {
+    try { return localStorage.getItem('expenseGroupBy') || 'none'; } catch (e) { return 'none'; }
+  });
+  React.useEffect(() => {
+    try { localStorage.setItem('expenseGroupBy', groupBy); } catch (e) {}
+  }, [groupBy]);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [selectMode, setSelectMode] = useState(false);
 
@@ -73,6 +82,45 @@ export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDe
       }
     });
   }, [filtered, sortCol, sortDir]);
+
+  // Numeric-by-address ordering for groups so "5297 Pueblo" comes after "1329"
+  // not before "5341". Mirrors the order on the management report.
+  const _streetNum = (s) => {
+    if (!s) return Number.POSITIVE_INFINITY;
+    const m = String(s).match(/(\d+)/);
+    return m ? parseInt(m[1], 10) : Number.POSITIVE_INFINITY;
+  };
+
+  // Build a Month → Property → expenses[] structure when grouping is on.
+  // Months sorted newest-first; properties within each month numeric-by-address.
+  const groupedByMonthProperty = useMemo(() => {
+    if (groupBy !== 'month-property') return null;
+    const groups = new Map();
+    for (const e of filtered) {
+      const ym = (e.date || '').slice(0, 7) || '0000-00';
+      if (!groups.has(ym)) groups.set(ym, new Map());
+      const propKey = e.propertyName || 'General / Operating';
+      const inner = groups.get(ym);
+      if (!inner.has(propKey)) inner.set(propKey, []);
+      inner.get(propKey).push(e);
+    }
+    // To arrays, sorted
+    const monthArr = [...groups.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
+    return monthArr.map(([ym, propsMap]) => {
+      const propArr = [...propsMap.entries()].sort((a, b) => _streetNum(a[0]) - _streetNum(b[0]));
+      const monthTotal = propArr.reduce((s, [, rows]) => s + rows.reduce((ss, e) => ss + (parseFloat(e.amount) || 0), 0), 0);
+      return {
+        ym,
+        label: ym === '0000-00' ? 'No date' : new Date(parseInt(ym.slice(0,4)), parseInt(ym.slice(5,7)) - 1).toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+        total: monthTotal,
+        properties: propArr.map(([name, rows]) => ({
+          name,
+          total: rows.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0),
+          rows: rows.sort((a, b) => (a.date || '').localeCompare(b.date || '')),
+        })),
+      };
+    });
+  }, [filtered, groupBy]);
 
   const handleSort = (col) => {
     if (sortCol === col) {
@@ -416,6 +464,15 @@ export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDe
             <option key={y} value={y}>{y}</option>
           ))}
         </select>
+        <select
+          value={groupBy}
+          onChange={e => setGroupBy(e.target.value)}
+          title="Group expenses"
+          className="px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white focus:outline-none focus:border-red-500/50"
+        >
+          <option value="none">Sort by date</option>
+          <option value="month-property">Group by Month → Property</option>
+        </select>
       </div>
 
       {/* Table */}
@@ -463,53 +520,90 @@ export default function ExpensesList({ expenses, properties, onAdd, onEdit, onDe
                 </tr>
               </thead>
               <tbody>
-                {sorted.map(exp => (
-                  <tr
-                    key={exp.id}
-                    className={`border-b border-white/[0.05] hover:bg-white/[0.03] transition cursor-pointer ${
-                      selectMode && selectedIds.has(exp.id) ? 'bg-blue-500/[0.08]' : ''
-                    }`}
-                    onClick={() => selectMode ? toggleSelect(exp.id) : onEdit(exp)}
-                  >
-                    {selectMode && (
-                      <td className="w-10 px-3 py-3">
-                        <button onClick={(e) => { e.stopPropagation(); toggleSelect(exp.id); }}>
-                          {selectedIds.has(exp.id)
-                            ? <CheckSquare className="w-4 h-4 text-blue-400" />
-                            : <Square className="w-4 h-4 text-white/30" />}
-                        </button>
-                      </td>
-                    )}
-                    <td className="px-4 py-3">
-                      <span className="text-sm text-white/70">{exp.date ? formatDate(exp.date) : '—'}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm font-medium text-white">
-                        {exp.description || '—'}
-                        {exp.generatedFromTemplate && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-300/70 align-middle">🔄 auto</span>}
-                        {exp.receiptPhoto && <span className="ml-1.5 text-[10px] text-white/30 align-middle">📸</span>}
-                      </span>
-                      {exp.category === 'mileage' && exp.miles && (
-                        <span className="text-xs text-white/40 block">🚗 {exp.miles} mi</span>
+                {(() => {
+                  // Reusable row render so flat + grouped share the same markup.
+                  const renderRow = (exp) => (
+                    <tr
+                      key={exp.id}
+                      className={`border-b border-white/[0.05] hover:bg-white/[0.03] transition cursor-pointer ${
+                        selectMode && selectedIds.has(exp.id) ? 'bg-blue-500/[0.08]' : ''
+                      }`}
+                      onClick={() => selectMode ? toggleSelect(exp.id) : onEdit(exp)}
+                    >
+                      {selectMode && (
+                        <td className="w-10 px-3 py-3">
+                          <button onClick={(e) => { e.stopPropagation(); toggleSelect(exp.id); }}>
+                            {selectedIds.has(exp.id)
+                              ? <CheckSquare className="w-4 h-4 text-blue-400" />
+                              : <Square className="w-4 h-4 text-white/30" />}
+                          </button>
+                        </td>
                       )}
-                      {exp.vendor && <span className="text-xs text-white/40 block">{exp.vendor}</span>}
-                    </td>
-                    <td className="px-4 py-3">{getCategoryBadge(exp.category)}</td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm text-white/70">{exp.propertyName || '—'}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {exp.sourceDocument ? (
-                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/[0.06] border border-white/[0.08] text-white/50 whitespace-nowrap">
-                          {exp.sourceDocument}
+                      <td className="px-4 py-3">
+                        <span className="text-sm text-white/70">{exp.date ? formatDate(exp.date) : '—'}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-sm font-medium text-white">
+                          {exp.description || '—'}
+                          {exp.generatedFromTemplate && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-300/70 align-middle">🔄 auto</span>}
+                          {exp.receiptPhoto && <span className="ml-1.5 text-[10px] text-white/30 align-middle">📸</span>}
                         </span>
-                      ) : <span className="text-sm text-white/30">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="text-sm font-medium text-red-400">{formatCurrency(exp.amount || 0)}</span>
-                    </td>
-                  </tr>
-                ))}
+                        {exp.category === 'mileage' && exp.miles && (
+                          <span className="text-xs text-white/40 block">🚗 {exp.miles} mi</span>
+                        )}
+                        {exp.vendor && <span className="text-xs text-white/40 block">{exp.vendor}</span>}
+                      </td>
+                      <td className="px-4 py-3">{getCategoryBadge(exp.category)}</td>
+                      <td className="px-4 py-3">
+                        <span className="text-sm text-white/70">{exp.propertyName || '—'}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {exp.sourceDocument ? (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/[0.06] border border-white/[0.08] text-white/50 whitespace-nowrap">
+                            {exp.sourceDocument}
+                          </span>
+                        ) : <span className="text-sm text-white/30">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className="text-sm font-medium text-red-400">{formatCurrency(exp.amount || 0)}</span>
+                      </td>
+                    </tr>
+                  );
+
+                  if (groupBy !== 'month-property' || !groupedByMonthProperty) {
+                    return sorted.map(renderRow);
+                  }
+
+                  // Grouped: month header → property header → expense rows.
+                  const colSpan = selectMode ? 7 : 6;
+                  const out = [];
+                  groupedByMonthProperty.forEach(g => {
+                    out.push(
+                      <tr key={`m-${g.ym}`} className="bg-amber-500/[0.06] border-y border-amber-500/20">
+                        <td colSpan={colSpan} className="px-4 py-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-semibold text-amber-200">{g.label}</span>
+                            <span className="text-xs font-medium text-amber-300/70">{formatCurrency(g.total)}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                    g.properties.forEach(prop => {
+                      out.push(
+                        <tr key={`m-${g.ym}-p-${prop.name}`} className="bg-white/[0.02]">
+                          <td colSpan={colSpan} className="px-4 py-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-white/60 pl-3">{prop.name}</span>
+                              <span className="text-xs text-white/40">{formatCurrency(prop.total)}</span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                      prop.rows.forEach(row => out.push(renderRow(row)));
+                    });
+                  });
+                  return out;
+                })()}
               </tbody>
             </table>
           </div>
