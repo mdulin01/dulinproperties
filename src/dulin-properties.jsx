@@ -1458,8 +1458,16 @@ export default function DulinProperties() {
                           repairs:   managed.repairs,
                           supplies:  managed.supplies,
                           utilities: managed.utilities,
-                          // Insurance / HOA / Other are owner-paid by nature — always combined.
-                          insurance: managed.insurance + owner.insurance,
+                          // Insurance follows the Repairs pattern: managed in
+                          // the property row, owner-paid in the "+ Owner Paid"
+                          // row. Mom enters insurance via FFB / Manual and
+                          // expects it under Owner Paid, not under the
+                          // management company subtotal.
+                          insurance: managed.insurance,
+                          // HOA / Other stay always-combined because mgmt cos
+                          // basically never pay these — keeping them inline
+                          // means mom doesn't have to expand Owner Paid to see
+                          // them.
                           hoa:       managed.hoa   + owner.hoa,
                           other:     managed.other + owner.other,
                           dist:      managed.dist,
@@ -1471,11 +1479,13 @@ export default function DulinProperties() {
                           insurance: view.insurance, hoa: view.hoa, other: view.other,
                           dist: view.dist,
                           // Separate owner-paid totals (still tracked for the "Owner Paid" row).
-                          // Insurance / HOA / Other are zeroed here because they already appear
-                          // in the property row above — preventing double-counting in the UI.
+                          // Insurance now uses the actual owner-paid amount so FFB / Manual
+                          // insurance shows in the "+ Owner Paid" row (matches mom's mental
+                          // model). HOA / Other are still zeroed because they always-combine
+                          // into the property row above — preventing double-counting.
                           ownerMgmtFee: owner.mgmtFee, ownerRepairs: owner.repairs,
                           ownerSupplies: owner.supplies, ownerUtilities: owner.utilities,
-                          ownerInsurance: 0, ownerHoa: 0, ownerOther: 0,
+                          ownerInsurance: owner.insurance, ownerHoa: 0, ownerOther: 0,
                           ownerDist: owner.dist,
                         };
                       });
@@ -1500,15 +1510,16 @@ export default function DulinProperties() {
                         repairs:   isSelfManaged ? groupManaged.repairs   + groupOwner.repairs   : groupManaged.repairs,
                         supplies:  isSelfManaged ? groupManaged.supplies  + groupOwner.supplies  : groupManaged.supplies,
                         utilities: isSelfManaged ? groupManaged.utilities + groupOwner.utilities : groupManaged.utilities,
-                        // Insurance + HOA + Other always combined — see note on `view` above.
-                        insurance: groupManaged.insurance + groupOwner.insurance,
+                        // Insurance: managed-only for non-self-managed (follows Repairs pattern).
+                        insurance: isSelfManaged ? groupManaged.insurance + groupOwner.insurance : groupManaged.insurance,
+                        // HOA + Other always combined — see note on `view` above.
                         hoa:       groupManaged.hoa   + groupOwner.hoa,
                         other:     groupManaged.other + groupOwner.other,
                         dist:      isSelfManaged ? groupManaged.dist      + groupOwner.dist      : groupManaged.dist,
                       };
-                      // Insurance + HOA + Other are excluded from the "+ Owner Paid" row totals
-                      // because they're already shown inline in property rows.
-                      const ownerTotals = { ...groupOwner, insurance: 0, hoa: 0, other: 0 };
+                      // HOA + Other stay zeroed in the "+ Owner Paid" row because they're
+                      // already shown inline in property rows. Insurance is now included.
+                      const ownerTotals = { ...groupOwner, hoa: 0, other: 0 };
                       // Managed-only is what came through this manager's statement.
                       const managedTotals = { rent: groupRent, ...groupManaged };
                       const hasOwnerExpenses = Object.values(ownerTotals).some(v => v > 0);
