@@ -1038,32 +1038,52 @@ export default function DulinProperties() {
               />
               {searchQuery && (
                 <div className="mt-2 space-y-1 max-h-64 overflow-y-auto">
-                  {getSearchResults().map((result, i) => (
-                    <button key={i} onClick={() => {
-                      setActiveSection(result.section);
-                      setShowSearch(false);
-                      setSearchQuery('');
-                      if (result.type === 'property') setSelectedProperty(result.item);
-                      if (result.type === 'document') setViewingDocument(result.item);
-                      if (result.type === 'task') setShowAddTaskModal(result.item);
-                    }} className="w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition">
-                      <span className="text-xs text-white/40 uppercase">{result.type}</span>
-                      <p className="text-sm text-white truncate">
-                        {(() => {
-                          const it = result.item;
-                          if (result.type === 'rent') {
-                            const who = it.tenantName || it.propertyName || 'Rent';
-                            return `${who} — ${formatCurrency(it.amount || 0)}${it.month ? ` (${it.month})` : ''}`;
-                          }
-                          if (result.type === 'expense') {
-                            const what = it.description || it.vendor || it.propertyName || 'Expense';
-                            return `${what} — ${formatCurrency(it.amount || 0)}`;
-                          }
-                          return it.title || it.name || it.description || '(untitled)';
-                        })()}
-                      </p>
-                    </button>
-                  ))}
+                  {getSearchResults().map((result, i) => {
+                    // Pretty-print whatever date the item carries.
+                    const isoDate = result.item?.date || result.item?.datePaid
+                      || (result.item?.month ? `${result.item.month}-01` : '');
+                    const prettyDate = (() => {
+                      if (!isoDate) return '';
+                      const d = new Date(isoDate);
+                      if (isNaN(d.getTime())) return '';
+                      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                    })();
+                    return (
+                      <button key={i} onClick={() => {
+                        setActiveSection(result.section);
+                        setShowSearch(false);
+                        setSearchQuery('');
+                        if (result.type === 'property') setSelectedProperty(result.item);
+                        if (result.type === 'document') setViewingDocument(result.item);
+                        if (result.type === 'task') setShowAddTaskModal(result.item);
+                        // Take her straight to the item so she doesn't have to
+                        // re-find it on the destination page.
+                        if (result.type === 'expense') setShowAddExpenseModal(result.item);
+                        if (result.type === 'rent') setShowAddRentModal(result.item);
+                      }} className="w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition">
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-xs text-white/40 uppercase">{result.type}</span>
+                          {prettyDate && (
+                            <span className="text-[10px] font-mono text-white/40">{prettyDate}</span>
+                          )}
+                        </div>
+                        <p className="text-sm text-white truncate">
+                          {(() => {
+                            const it = result.item;
+                            if (result.type === 'rent') {
+                              const who = it.tenantName || it.propertyName || 'Rent';
+                              return `${who} — ${formatCurrency(it.amount || 0)}`;
+                            }
+                            if (result.type === 'expense') {
+                              const what = it.description || it.vendor || it.propertyName || 'Expense';
+                              return `${what} — ${formatCurrency(it.amount || 0)}`;
+                            }
+                            return it.title || it.name || it.description || '(untitled)';
+                          })()}
+                        </p>
+                      </button>
+                    );
+                  })}
                   {getSearchResults().length === 0 && (
                     <p className="text-center text-white/40 text-sm py-4">No results found</p>
                   )}
