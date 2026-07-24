@@ -71,6 +71,7 @@ dulinproperties/
 - Desktop nav has a hardcoded section list separate from `allSections` — update BOTH when adding nav sections.
 - Action items for managed properties (Absolute, Barnett & Hill) should be excluded — only show owner-action items for Dianne Dulin (self-managed) properties.
 - Shares structural patterns with `rainbow-rentals` but they are **completely separate** Firebase projects, repos, domains, and deployments.
+- **FFB-first bookkeeping (July 2026):** the FFB bank statements (rental account •••5710) are the ledger of record for cash. `src/data/ffbStatements.js` holds hand-verified Jan–Jun 2026 statement data (summaries + transactions, balanced to the penny) and feeds both the DocumentImport quick-load presets and the Bank Reconciliation tab (`src/components/InputData/FFBReconciliation.jsx`). Two categories prevent double-counting against the owner packets: income `owner-distribution` (SIGONFILE deposits = managers' nets, excluded from income totals) and expense `transfer` (card bill payments / investment buys / personal, excluded from expense totals). When a new FFB statement arrives, add its month to `ffbStatements.js` following the existing pattern — the verification rule is deposits sum to depositsTotal, debits to debitsTotal, and previousBalance + deposits + interest − debits = endingBalance.
 
 ## Dev Commands
 

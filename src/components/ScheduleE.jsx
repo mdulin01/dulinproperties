@@ -145,6 +145,9 @@ export default function ScheduleE({ properties, expenses, rentPayments, onClose 
     // Rent payments — each is income for line 3
     for (const rp of rentPayments || []) {
       if (rp.status !== 'paid') continue;
+      // FFB owner-distribution deposits are the managers' rents landing in the
+      // bank — the per-property rents are already counted, so skip them here.
+      if (rp.category === 'owner-distribution') continue;
       const ym = rp.month || (rp.datePaid || '').slice(0, 7);
       if (!ym.startsWith(yearStr)) continue;
       const amt = parseFloat(rp.amount) || 0;
@@ -159,6 +162,7 @@ export default function ScheduleE({ properties, expenses, rentPayments, onClose 
     for (const e of expenses || []) {
       if ((e.date || '').slice(0, 4) !== yearStr) continue;
       if (e.category === 'owner-distribution') continue; // distributions are not Schedule E expenses
+      if (e.category === 'transfer') continue; // card payments / investment buys / personal — not deductible here
       if (OP_CATEGORIES.has(e.category)) continue; // allocated pro-rata after this loop
       const amt = parseFloat(e.amount) || 0;
       if (!amt) continue;

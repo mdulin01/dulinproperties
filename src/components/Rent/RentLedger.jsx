@@ -149,7 +149,7 @@ export default function RentLedger({ rentPayments, properties, onAdd, onEdit, on
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const thisMonthPayments = rentPayments.filter(r => r.month === currentMonth);
-  const collected = thisMonthPayments.filter(r => r.status === 'paid').reduce((sum, r) => sum + (r.amount || 0), 0);
+  const collected = thisMonthPayments.filter(r => r.status === 'paid' && r.category !== 'owner-distribution').reduce((sum, r) => sum + (r.amount || 0), 0);
   const outstanding = totalExpected - collected;
 
   return (

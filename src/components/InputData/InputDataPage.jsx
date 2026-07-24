@@ -3,6 +3,7 @@ import DocumentImport from '../Documents/DocumentImport';
 import ValidateTransactions from './ValidateTransactions';
 import ManagedRentals from './ManagedRentals';
 import PropertyInfo from './PropertyInfo';
+import FFBReconciliation from './FFBReconciliation';
 import NextSteps from '../NextSteps';
 import Tip from '../Tip';
 
@@ -11,6 +12,8 @@ const TABS = [
     hint: 'Drop in monthly PDFs from your management companies, bank, and credit cards.' },
   { id: 'validate', icon: '✅', label: 'Data Validation',
     hint: 'Review every imported entry and mark it validated, edit, or discard.' },
+  { id: 'reconcile', icon: '🏦', label: 'Bank Reconciliation',
+    hint: 'Check the app against each FFB bank statement — the source of truth for what actually hit the bank.' },
   { id: 'managed', icon: '🏠', label: 'Managed Rentals',
     hint: 'Record rents and expenses for the four properties you manage yourself.' },
   { id: 'info', icon: '🧾', label: 'Property Info',
@@ -136,6 +139,16 @@ export default function InputDataPage({
           onEditRent={onEditRent}
           onAddExpense={onNewExpense}
           onAddRent={onNewRent}
+          showToast={showToast}
+        />
+      )}
+
+      {active === 'reconcile' && (
+        <FFBReconciliation
+          expenses={expenses}
+          rentPayments={rentPayments}
+          bulkUpdateExpenses={bulkUpdateExpenses}
+          bulkUpdateRentPayments={bulkUpdateRentPayments}
           showToast={showToast}
         />
       )}

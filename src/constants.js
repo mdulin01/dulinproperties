@@ -90,6 +90,7 @@ export const documentTypes = [
 // Expense categories — Property-specific
 export const propertyExpenseCategories = [
   { value: 'owner-distribution', label: 'Owner Distribution', emoji: '💸' },
+  { value: 'transfer', label: 'Transfer / Non-Rental', emoji: '🔁' },
   { value: 'management-fee', label: 'Management Fee', emoji: '🏢' },
   { value: 'repair', label: 'Repair', emoji: '🔧' },
   { value: 'insurance', label: 'Insurance', emoji: '🛡️' },
@@ -158,6 +159,7 @@ export const MILEAGE_RATE = 0.70;
 // Income categories
 export const incomeCategories = [
   { value: 'rent', label: 'Rent', emoji: '💰' },
+  { value: 'owner-distribution', label: 'Owner Distribution (bank deposit)', emoji: '🏦' },
   { value: 'prepaid-rent', label: 'Prepaid Rent', emoji: '📅' },
   { value: 'late-fee', label: 'Late Fee', emoji: '⏰' },
   { value: 'deposit', label: 'Security Deposit', emoji: '🔒' },
@@ -231,3 +233,25 @@ export const propertyColors = [
   'from-cyan-400 to-blue-500',
   'from-green-400 to-emerald-500',
 ];
+
+// ---------------------------------------------------------------------------
+// FFB-first bookkeeping helpers
+//
+// The FFB bank statements are the ledger of record for CASH, but two kinds of
+// bank rows must not count toward rental income/expense totals or everything
+// double-counts against the management-company statements:
+//
+//   • Income rows with category 'owner-distribution' — SIGONFILE deposits from
+//     Barnett & Hill / Absolute. The managers' per-property rents (already
+//     imported from owner packets) are the income of record; the distribution
+//     is just that same money landing in the bank.
+//   • Expense rows with category 'transfer' — credit-card bill payments (the
+//     card statements carry the real deductible line items), investment buys,
+//     and personal outflows.
+// ---------------------------------------------------------------------------
+
+/** True when a rent-payment/income row should count toward rental income totals. */
+export const countsAsIncome = (r) => (r?.category || 'rent') !== 'owner-distribution';
+
+/** True when an expense row is a transfer/non-rental outflow (excluded from expense totals). */
+export const isTransferExpense = (e) => e?.category === 'transfer';

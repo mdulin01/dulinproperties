@@ -1129,6 +1129,9 @@ export default function DulinProperties() {
 
                     // Helper: check if expense is a distribution
                     const isDistribution = (e) => e.category === 'owner-distribution';
+                    // Transfers (card bill payments, investment buys, personal outflows
+                    // from the FFB bank ledger) are cash movements, not rental expenses.
+                    const isTransfer = (e) => e.category === 'transfer';
                     const isMgmtFee = (e) => e.category === 'management-fee';
                     const isBusinessOp = (e) => OPERATING_CATEGORY_VALUES.has(e.category);
                     // Income-category entries that get mistakenly stored as expense rows
@@ -1138,7 +1141,7 @@ export default function DulinProperties() {
                     const INCOME_CATEGORIES = new Set(['rent', 'late-fee', 'prepaid-rent', 'deposit']);
                     const isMistaggedIncome = (e) => INCOME_CATEGORIES.has(e.category);
                     const isPropertyExpense = (e) =>
-                      !isDistribution(e) && !isMgmtFee(e) && !isBusinessOp(e) && !isMistaggedIncome(e);
+                      !isDistribution(e) && !isTransfer(e) && !isMgmtFee(e) && !isBusinessOp(e) && !isMistaggedIncome(e);
 
                     // YTD expenses broken down (non-template only)
                     const regularExpenses = expenses.filter(e => !e.isTemplate);
@@ -1156,11 +1159,16 @@ export default function DulinProperties() {
                     const ytdOtherIncome = paidYtdRent
                       .filter(r => r.category === 'refund' || r.category === 'other')
                       .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+                    // FFB owner-distribution deposits are the managers' rents landing in
+                    // the bank — already counted property-by-property, so NOT income here.
+                    const ytdBankDistributions = paidYtdRent
+                      .filter(r => r.category === 'owner-distribution')
+                      .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
                     const ytdMistaggedRentAsIncome = ytdAll.filter(isMistaggedIncome)
                       .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                     // Pure rent (excludes interest + other-income categories).
                     const ytdRentOnly = paidYtdRent
-                      .filter(r => !['interest', 'refund', 'other'].includes(r.category))
+                      .filter(r => !['interest', 'refund', 'other', 'owner-distribution'].includes(r.category))
                       .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0)
                       + ytdMistaggedRentAsIncome;
                     // Gross income = rent + interest + other.
@@ -1194,7 +1202,8 @@ export default function DulinProperties() {
                       const isCurrent = i === currentMonthIdx;
 
                       const income = rentPayments
-                        .filter(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(monthStr))
+                        .filter(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(monthStr)
+                          && r.category !== 'owner-distribution')
                         .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
 
                       const monthExps = regularExpenses.filter(e => (e.date || '').startsWith(monthStr));
@@ -1226,11 +1235,12 @@ export default function DulinProperties() {
                           <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center">
                             <p className="text-[10px] font-semibold text-emerald-400/70 uppercase tracking-wider mb-1">YTD Gross Income</p>
                             <p className="text-xl font-bold text-emerald-400">{formatCurrency(ytdRent)}</p>
-                            {(ytdInterest > 0 || ytdOtherIncome > 0) && (
+                            {(ytdInterest > 0 || ytdOtherIncome > 0 || ytdBankDistributions > 0) && (
                               <p className="text-[9px] text-white/30 mt-1">
                                 Rent: {formatCurrency(ytdRentOnly)}
                                 {ytdInterest > 0 ? ` · Interest: ${formatCurrency(ytdInterest)}` : ''}
                                 {ytdOtherIncome > 0 ? ` · Other: ${formatCurrency(ytdOtherIncome)}` : ''}
+                                {ytdBankDistributions > 0 ? ` · Bank distributions (not counted): ${formatCurrency(ytdBankDistributions)}` : ''}
                               </p>
                             )}
                           </div>
@@ -1427,7 +1437,7 @@ export default function DulinProperties() {
                       const insurance = sumBy(e => e.category === 'insurance');
                       const hoa       = sumBy(e => e.category === 'hoa');
                       const dist      = sumBy(e => e.category === 'owner-distribution');
-                      const nonDist   = sumBy(e => e.category !== 'owner-distribution');
+                      const nonDist   = sumBy(e => e.category !== 'owner-distribution' && e.category !== 'transfer');
                       // Catch-all remainder; round to cents and clamp tiny float noise.
                       const other = Math.max(0, Math.round((nonDist - mgmtFee - repairs - supplies - utilities - insurance - hoa) * 100) / 100);
                       return { mgmtFee, repairs, supplies, utilities, insurance, hoa, other, dist };

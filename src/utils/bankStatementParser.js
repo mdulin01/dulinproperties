@@ -167,6 +167,9 @@ function detectPeriod(fullText) {
 // bias by sourceKind below.
 const INCOME_KEYWORDS = [
   'deposit', 'credit', 'interest', 'refund', 'reversal',
+  // Management-company owner distributions arriving by ACH (FFB shows these
+  // as "SIGONFILE Barnett & Hill L" / "SIGONFILE Absolute Real Es").
+  'sigonfile',
   'ach deposit', 'mobile deposit', 'wire in', 'dep ',
   // Rent-collection platforms — incoming rent deposits. Without these, an
   // apts.com rent deposit whose line lacks the word "deposit" fell through to
@@ -194,6 +197,15 @@ function guessFlowType(description, sourceKind) {
 function guessCategory(description) {
   const d = (description || '').toLowerCase();
   const rules = [
+    // --- FFB-specific, must run before generic rules ---
+    // Owner distributions from the management companies: NOT rent income —
+    // the per-property rents from the owner packets are the income of record.
+    [['sigonfile'], 'owner-distribution'],
+    // Credit-card bill payments are transfers — the card statement carries
+    // the real line items, so counting the payment too double-counts.
+    [['citibusiness', 'costco anywhere card', 'card payment'], 'transfer'],
+    // Investment buys / brokerage transfers are not expenses.
+    [['vanguard', 'investment'], 'transfer'],
     [['apts.com', 'apartments.com', 'apartments com', 'apts com', 'rent payment', 'rental income', 'rent dep'], 'rent'],
     [['lowe', 'home depot', 'menard', 'ace hardware', 'hardware'], 'repair'],
     [['plumb', 'drain', 'pipe', 'toilet', 'faucet', 'water heater'], 'plumbing'],
