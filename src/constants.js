@@ -160,6 +160,7 @@ export const MILEAGE_RATE = 0.70;
 export const incomeCategories = [
   { value: 'rent', label: 'Rent', emoji: '💰' },
   { value: 'owner-distribution', label: 'Owner Distribution (bank deposit)', emoji: '🏦' },
+  { value: 'non-rental', label: 'Non-Rental / Personal', emoji: '🚫' },
   { value: 'prepaid-rent', label: 'Prepaid Rent', emoji: '📅' },
   { value: 'late-fee', label: 'Late Fee', emoji: '⏰' },
   { value: 'deposit', label: 'Security Deposit', emoji: '🔒' },
@@ -245,13 +246,20 @@ export const propertyColors = [
 //     Barnett & Hill / Absolute. The managers' per-property rents (already
 //     imported from owner packets) are the income of record; the distribution
 //     is just that same money landing in the bank.
+//   • Income rows with category 'non-rental' — activity on the non-rental FFB
+//     accounts (•••0410 annuity credits, personal deposits and their interest).
+//     The statements cover all four bundled accounts so the bank ledger is
+//     complete, but this money is not rental income.
 //   • Expense rows with category 'transfer' — credit-card bill payments (the
 //     card statements carry the real deductible line items), investment buys,
-//     and personal outflows.
+//     internal account transfers, and personal outflows.
 // ---------------------------------------------------------------------------
 
+/** Income categories that are recorded for reconciliation but are NOT rental income. */
+export const NON_INCOME_CATEGORIES = ['owner-distribution', 'non-rental'];
+
 /** True when a rent-payment/income row should count toward rental income totals. */
-export const countsAsIncome = (r) => (r?.category || 'rent') !== 'owner-distribution';
+export const countsAsIncome = (r) => !NON_INCOME_CATEGORIES.includes(r?.category || 'rent');
 
 /** True when an expense row is a transfer/non-rental outflow (excluded from expense totals). */
 export const isTransferExpense = (e) => e?.category === 'transfer';

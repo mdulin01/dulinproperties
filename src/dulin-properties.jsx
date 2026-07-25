@@ -6,7 +6,8 @@ import {
   ownerEmails, ownerDisplayNames, propertyTypes, propertyColors, documentTypes,
   expenseCategories, incomeCategories, taskPriorities, timeHorizons,
   listCategories, ideaCategories, tenantStatuses, rentStatuses,
-  operatingExpenseCategories, OPERATING_CATEGORY_VALUES
+  operatingExpenseCategories, OPERATING_CATEGORY_VALUES,
+  NON_INCOME_CATEGORIES, countsAsIncome
 } from './constants';
 import {
   formatDate, formatCurrency, validateFileSize, isHeicFile, getSafeFileName,
@@ -1164,11 +1165,17 @@ export default function DulinProperties() {
                     const ytdBankDistributions = paidYtdRent
                       .filter(r => r.category === 'owner-distribution')
                       .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+                    // Personal/non-rental credits on the bundled FFB accounts
+                    // (•••0410 annuities, personal deposits). Present for bank
+                    // reconciliation only — never rental income.
+                    const ytdNonRental = paidYtdRent
+                      .filter(r => r.category === 'non-rental')
+                      .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
                     const ytdMistaggedRentAsIncome = ytdAll.filter(isMistaggedIncome)
                       .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                     // Pure rent (excludes interest + other-income categories).
                     const ytdRentOnly = paidYtdRent
-                      .filter(r => !['interest', 'refund', 'other', 'owner-distribution'].includes(r.category))
+                      .filter(r => !['interest', 'refund', 'other', ...NON_INCOME_CATEGORIES].includes(r.category))
                       .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0)
                       + ytdMistaggedRentAsIncome;
                     // Gross income = rent + interest + other.
@@ -1203,7 +1210,7 @@ export default function DulinProperties() {
 
                       const income = rentPayments
                         .filter(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(monthStr)
-                          && r.category !== 'owner-distribution')
+                          && countsAsIncome(r))
                         .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
 
                       const monthExps = regularExpenses.filter(e => (e.date || '').startsWith(monthStr));
@@ -1235,12 +1242,13 @@ export default function DulinProperties() {
                           <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center">
                             <p className="text-[10px] font-semibold text-emerald-400/70 uppercase tracking-wider mb-1">YTD Gross Income</p>
                             <p className="text-xl font-bold text-emerald-400">{formatCurrency(ytdRent)}</p>
-                            {(ytdInterest > 0 || ytdOtherIncome > 0 || ytdBankDistributions > 0) && (
+                            {(ytdInterest > 0 || ytdOtherIncome > 0 || ytdBankDistributions > 0 || ytdNonRental > 0) && (
                               <p className="text-[9px] text-white/30 mt-1">
                                 Rent: {formatCurrency(ytdRentOnly)}
                                 {ytdInterest > 0 ? ` · Interest: ${formatCurrency(ytdInterest)}` : ''}
                                 {ytdOtherIncome > 0 ? ` · Other: ${formatCurrency(ytdOtherIncome)}` : ''}
                                 {ytdBankDistributions > 0 ? ` · Bank distributions (not counted): ${formatCurrency(ytdBankDistributions)}` : ''}
+                                {ytdNonRental > 0 ? ` · Non-rental / personal (not counted): ${formatCurrency(ytdNonRental)}` : ''}
                               </p>
                             )}
                           </div>
@@ -1555,7 +1563,8 @@ export default function DulinProperties() {
                     // overhead, or anything tagged "General"). These belong to no management
                     // company, so without this group they'd silently never appear in the
                     // Monthly Report or the month total. Each expense is shown as its own row.
-                    const noPropExp = monthExp.filter(e => !e.propertyId && e.category !== 'owner-distribution');
+                    const noPropExp = monthExp.filter(e => !e.propertyId
+                      && e.category !== 'owner-distribution' && e.category !== 'transfer');
                     if (noPropExp.length > 0) {
                       const ZERO_OWNER = { ownerMgmtFee: 0, ownerRepairs: 0, ownerSupplies: 0, ownerUtilities: 0, ownerInsurance: 0, ownerHoa: 0, ownerOther: 0, ownerDist: 0 };
                       const generalRows = noPropExp.map(e => {

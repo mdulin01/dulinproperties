@@ -170,6 +170,8 @@ const INCOME_KEYWORDS = [
   // Management-company owner distributions arriving by ACH (FFB shows these
   // as "SIGONFILE Barnett & Hill L" / "SIGONFILE Absolute Real Es").
   'sigonfile',
+  // Annuity credits on the personal bundled account (•••0410).
+  'annuity',
   'ach deposit', 'mobile deposit', 'wire in', 'dep ',
   // Rent-collection platforms — incoming rent deposits. Without these, an
   // apts.com rent deposit whose line lacks the word "deposit" fell through to
@@ -206,6 +208,13 @@ function guessCategory(description) {
     [['citibusiness', 'costco anywhere card', 'card payment'], 'transfer'],
     // Investment buys / brokerage transfers are not expenses.
     [['vanguard', 'investment'], 'transfer'],
+    // Internal moves between the bundled FFB accounts, and personal insurance
+    // paid out of the non-rental accounts — cash movement, not rental expense.
+    [['transfer from xxx', 'transfer to xxx'], 'transfer'],
+    [['state farm ins', 'state life insurance'], 'transfer'],
+    // Dianne's TIAA annuity credits land on •••0410 — personal income, kept
+    // out of the rental books by the 'non-rental' category.
+    [['annuity', 't-c ind&inst', 't-c ind & inst'], 'non-rental'],
     [['apts.com', 'apartments.com', 'apartments com', 'apts com', 'rent payment', 'rental income', 'rent dep'], 'rent'],
     [['lowe', 'home depot', 'menard', 'ace hardware', 'hardware'], 'repair'],
     [['plumb', 'drain', 'pipe', 'toilet', 'faucet', 'water heater'], 'plumbing'],

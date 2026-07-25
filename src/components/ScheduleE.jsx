@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { X, Download, Printer, AlertCircle } from 'lucide-react';
 import { formatCurrency } from '../utils';
+import { countsAsIncome } from '../constants';
 import HelpTip from './HelpTip';
 
 /**
@@ -147,7 +148,8 @@ export default function ScheduleE({ properties, expenses, rentPayments, onClose 
       if (rp.status !== 'paid') continue;
       // FFB owner-distribution deposits are the managers' rents landing in the
       // bank — the per-property rents are already counted, so skip them here.
-      if (rp.category === 'owner-distribution') continue;
+      // 'non-rental' rows are personal credits on the bundled FFB accounts.
+      if (!countsAsIncome(rp)) continue;
       const ym = rp.month || (rp.datePaid || '').slice(0, 7);
       if (!ym.startsWith(yearStr)) continue;
       const amt = parseFloat(rp.amount) || 0;

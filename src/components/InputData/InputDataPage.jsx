@@ -93,8 +93,8 @@ export default function InputDataPage({
 
       {/* Contextual tips */}
       {active === 'statements' && (
-        <Tip tipKey="ffb-5710-default" variant="info">
-          When you import an <strong>FFB Bank</strong> statement that contains several accounts, the importer now defaults to just account <strong>•••5710</strong> (your rental). Transactions on 5711 / 0410 are skipped — add those manually if you ever need them.
+        <Tip tipKey="ffb-all-accounts" variant="info">
+          An <strong>FFB Bank</strong> statement covers several accounts, and the importer now brings in <strong>every transaction on all of them</strong> — •••5710 (rental), •••5711 and •••0410 (personal). Personal rows are tagged <strong>Non-Rental / Personal</strong> or <strong>Transfer</strong>, so the bank ledger is complete but your rental income, expenses and Schedule E only count rental money. Account •••3110 shows a balance only — FFB doesn't print its line items.
         </Tip>
       )}
       {active === 'validate' && (

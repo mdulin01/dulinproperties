@@ -17,7 +17,7 @@ const PROPERTY_TO_OP_CATEGORY = {
 import { formatCurrency } from '../../utils';
 import { parseOwnerPacket } from '../../utils/ownerPacketParser';
 import { parseBankStatement } from '../../utils/bankStatementParser';
-import { FFB_STATEMENTS, ffbStatementToEntries } from '../../data/ffbStatements';
+import { FFB_STATEMENTS, ffbStatementToEntries, ffbStatementTotals } from '../../data/ffbStatements';
 
 /**
  * DocumentImport – upload/parse management company statements, bank statements, etc.
@@ -710,13 +710,15 @@ export default function DocumentImport({
           return;
         }
         if (result.period?.monthStr) setDetectedMonth(result.period.monthStr);
-        // Surface any distinct account numbers found so the user can filter to
-        // just the rental account if the PDF bundled several. The rental account
-        // (5710) is always the default when present, since the others (5711 /
-        // 0410) are personal and entered manually if ever needed.
+        // Surface any distinct account numbers found. Default is ALL accounts —
+        // the FFB statement package is the complete cash record, so every
+        // transaction gets imported. Personal activity on 5711 / 0410 is kept
+        // out of the rental totals by category ('non-rental' / 'transfer'),
+        // not by dropping the rows. The filter is still there if she wants to
+        // load one account at a time.
         const accts = result.accounts || [];
         setDetectedAccounts(accts);
-        setAccountFilter(accts.includes('5710') ? '5710' : 'all');
+        setAccountFilter('all');
 
         mapped = result.transactions.map((tx, idx) => {
           const isIncome = tx.flowType === 'income';
@@ -1025,19 +1027,33 @@ export default function DocumentImport({
           For months not listed just drop the PDF. */}
       {activeSource === 'ffb-bank' && !ffbMonth && entries.length === 0 && (
         <div className="mb-4">
-          <p className="text-[11px] text-white/40 mb-2">Quick-load a verified month from the FFB statements (rental account •••5710 only — or drop a PDF below for any other month):</p>
+          <p className="text-[11px] text-white/40 mb-2">
+            Quick-load a verified month — <strong className="text-white/60">every transaction on all FFB accounts</strong> (•••5710 rental, •••5711, •••0410 personal). Or drop a PDF below for any other month:
+          </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {FFB_STATEMENTS.map(m => (
-              <button
-                key={m.id}
-                onClick={() => { setFfbMonth(m.id); setEntries(ffbStatementToEntries(m)); }}
-                className={`${c.bg} border ${c.border} rounded-xl p-4 text-center hover:brightness-110 transition`}
-              >
-                <span className={`text-sm font-semibold ${c.text}`}>{m.label}</span>
-                <p className="text-[10px] text-white/30 mt-1">{m.periodLabel}</p>
-              </button>
-            ))}
+            {FFB_STATEMENTS.map(m => {
+              const totals = ffbStatementTotals(m);
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => {
+                    setFfbMonth(m.id);
+                    setEntries(ffbStatementToEntries(m));
+                    setDetectedAccounts(m.accounts.map(a => a.acct));
+                    setAccountFilter('all');
+                  }}
+                  className={`${c.bg} border ${c.border} rounded-xl p-4 text-center hover:brightness-110 transition`}
+                >
+                  <span className={`text-sm font-semibold ${c.text}`}>{m.label}</span>
+                  <p className="text-[10px] text-white/30 mt-1">{m.periodLabel}</p>
+                  <p className="text-[10px] text-white/25 mt-0.5">{totals.lineCount} lines · {m.accounts.length} accounts</p>
+                </button>
+              );
+            })}
           </div>
+          <p className="text-[10px] text-white/25 mt-2">
+            Account •••3110 has no line items in these statements — FFB prints only its balance. Its activity shows up as the “Transfer to XXX3110” debits on •••0410.
+          </p>
         </div>
       )}
 
@@ -1271,7 +1287,7 @@ export default function DocumentImport({
                   return <option key={acct} value={acct}>•••{acct} ({n})</option>;
                 })}
               </select>
-              <span className="text-[11px] text-blue-200/50">Tip: your rental account is the one ending 5710.</span>
+              <span className="text-[11px] text-blue-200/50">Default is all accounts — personal rows on 5711 / 0410 are tagged non-rental so they stay out of your income and Schedule E.</span>
             </div>
           )}
 

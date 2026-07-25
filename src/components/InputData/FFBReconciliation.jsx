@@ -1,13 +1,16 @@
 import React, { useMemo, useState } from 'react';
 import { CheckCircle, AlertTriangle, ChevronDown, Landmark, Wrench } from 'lucide-react';
-import { FFB_STATEMENTS } from '../../data/ffbStatements';
+import { FFB_STATEMENTS, FFB_3110_BALANCES } from '../../data/ffbStatements';
 import { formatCurrency } from '../../utils';
 
 /**
  * FFBReconciliation — "Bank Reconciliation" tab on the Input Data page.
  *
  * The FFB statements (src/data/ffbStatements.js) are the ledger of record for
- * cash. For each statement month this panel answers three questions:
+ * cash. Each statement package covers four accounts (•••5710 rental, •••5711,
+ * •••0410 personal, and •••3110 which FFB reports as a balance only), and this
+ * panel reconciles each one separately. For every account/month it answers
+ * three questions:
  *
  *   1. COVERAGE  — is every line on the bank statement in the app?
  *      Each statement transaction is matched against imported FFB rows by
@@ -15,8 +18,9 @@ import { formatCurrency } from '../../utils';
  *
  *   2. CATEGORIES — are the imported rows categorized so nothing double-counts?
  *      Owner-distribution deposits must be category 'owner-distribution' (not
- *      'rent'), interest must be 'interest', and card-payment/investment debits
- *      must be 'transfer'. A one-click fix button repairs any that aren't.
+ *      'rent'), interest must be 'interest', card-payment/investment/internal
+ *      debits must be 'transfer', and credits on the personal accounts must be
+ *      'non-rental'. A one-click fix button repairs any that aren't.
  *
  *   3. DISTRIBUTIONS — does each SIGONFILE deposit equal the net the manager
  *      reported? Matched against the owner-distribution EXPENSE rows imported
@@ -74,33 +78,49 @@ export default function FFBReconciliation({
       distByMgrMonth[key].rows.push(round2(e.amount));
     }
 
+    // Match one statement line against the imported rows.
+    const matchLine = (tx, acct) => {
+      const pool = tx.flow === 'income' ? ffbIncomes : ffbExpenses;
+      // Best match: same amount, closest date (within 3 days), not already used.
+      let best = null;
+      for (const row of pool) {
+        if (row.used || !sameAmount(row.amount, tx.amount)) continue;
+        const d = daysBetween(row.date, tx.date);
+        if (d <= 3 && (!best || d < best.d)) best = { row, d };
+      }
+      if (best) best.row.used = true;
+
+      const expectedCat = tx.flow === 'income' ? (tx.incomeCat || 'rent') : (tx.cat || 'other');
+      const actualCat = best ? best.row.category : null;
+      // Only strict about the categories that cause double-counting or leak
+      // personal money into the rental books; 'other' vs 'repair' etc. is
+      // mom's judgment call, not a reconciliation error.
+      const STRICT = new Set(['owner-distribution', 'non-rental', 'interest', 'transfer']);
+      const catWrong = !!best && expectedCat !== actualCat && (STRICT.has(expectedCat) || STRICT.has(actualCat));
+
+      return { tx, acct, imported: !!best, matchedRow: best ? best.row : null, expectedCat, catWrong };
+    };
+
     return FFB_STATEMENTS.map(stmt => {
-      const lines = stmt.transactions.map(tx => {
-        const pool = tx.flow === 'income' ? ffbIncomes : ffbExpenses;
-        // Best match: same amount, closest date (within 3 days), not already used.
-        let best = null;
-        for (const row of pool) {
-          if (row.used || !sameAmount(row.amount, tx.amount)) continue;
-          const d = daysBetween(row.date, tx.date);
-          if (d <= 3 && (!best || d < best.d)) best = { row, d };
-        }
-        if (best) best.row.used = true;
-
-        const expectedCat = tx.flow === 'income' ? (tx.incomeCat || 'rent') : (tx.cat || 'other');
-        const actualCat = best ? best.row.category : null;
-        // Only strict about the categories that cause double-counting; 'other'
-        // vs 'repair' etc. is mom's judgment call, not a reconciliation error.
-        const STRICT = new Set(['owner-distribution', 'interest', 'transfer']);
-        const catWrong = !!best && expectedCat !== actualCat && (STRICT.has(expectedCat) || STRICT.has(actualCat));
-
-        return { tx, imported: !!best, matchedRow: best ? best.row : null, expectedCat, catWrong };
+      // Reconcile account by account, in statement order (5710 first).
+      const accounts = stmt.accounts.map(a => {
+        const lines = a.transactions.map(tx => matchLine(tx, a.acct));
+        return {
+          ...a,
+          lines,
+          missing: lines.filter(l => !l.imported),
+          catFixes: lines.filter(l => l.catWrong),
+        };
       });
 
+      const lines = accounts.flatMap(a => a.lines);
       const missing = lines.filter(l => !l.imported);
       const catFixes = lines.filter(l => l.catWrong);
 
-      // Distribution cross-check against manager statements.
-      const distChecks = stmt.transactions
+      // Distribution cross-check against manager statements (distributions
+      // only ever land on the rental account, but scan them all).
+      const distChecks = accounts
+        .flatMap(a => a.transactions)
         .filter(tx => tx.incomeCat === 'owner-distribution')
         .map(tx => {
           const src = VENDOR_TO_SOURCE[tx.vendor] || tx.vendor;
@@ -126,7 +146,7 @@ export default function FFBReconciliation({
       const allCatsOk = catFixes.length === 0;
       const allDistOk = distChecks.every(d => d.matchedMonth);
 
-      return { stmt, lines, missing, catFixes, distChecks, allImported, allCatsOk, allDistOk };
+      return { stmt, accounts, lines, missing, catFixes, distChecks, allImported, allCatsOk, allDistOk };
     });
   }, [expenses, rentPayments]);
 
@@ -175,9 +195,10 @@ export default function FFBReconciliation({
             <Landmark className="w-5 h-5 text-blue-400" /> FFB Bank Reconciliation
           </h3>
           <p className="text-xs text-white/50 mt-1 max-w-xl">
-            Every line below comes straight from the FFB statements for the rental account (•••5710).
-            Green means the line is imported and categorized so nothing double-counts against the
-            management-company statements.
+            Every line below comes straight from the FFB statements — <strong>all four bundled accounts</strong>,
+            because the bank is the one place every transaction appears. Green means the line is imported and
+            categorized so nothing double-counts against the management-company statements and no personal
+            money lands in the rental books.
           </p>
         </div>
         {allCatFixes.count > 0 && (
@@ -192,7 +213,7 @@ export default function FFBReconciliation({
         )}
       </div>
 
-      {monthResults.map(({ stmt, lines, missing, catFixes, distChecks, allImported, allCatsOk, allDistOk }) => {
+      {monthResults.map(({ stmt, accounts, lines, missing, catFixes, distChecks, allImported, allCatsOk, allDistOk }) => {
         const isOpen = openMonth === stmt.id;
         const importedCount = lines.length - missing.length;
         const allGood = allImported && allCatsOk && allDistOk;
@@ -218,8 +239,13 @@ export default function FFBReconciliation({
               </div>
               <div className="flex items-center gap-4 flex-shrink-0">
                 <div className="hidden sm:block text-right">
-                  <p className="text-[10px] text-white/40">Ending balance</p>
-                  <p className="text-sm font-semibold text-white">{formatCurrency(stmt.summary.endingBalance)}</p>
+                  <p className="text-[10px] text-white/40">Ending balance · all accounts</p>
+                  <p className="text-sm font-semibold text-white">
+                    {formatCurrency(
+                      accounts.reduce((s, a) => s + a.summary.endingBalance, 0)
+                      + (FFB_3110_BALANCES.find(b => b.monthStr === stmt.monthStr)?.endingBalance || 0)
+                    )}
+                  </p>
                 </div>
                 <ChevronDown className={`w-4 h-4 text-white/40 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
               </div>
@@ -227,56 +253,93 @@ export default function FFBReconciliation({
 
             {isOpen && (
               <div className="px-4 pb-4 space-y-4 border-t border-white/[0.06]">
-                {/* Statement summary strip */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3">
-                  {[
-                    ['Starting balance', stmt.summary.previousBalance],
-                    [`Deposits (${stmt.summary.depositCount}) + interest`, stmt.summary.depositsTotal + stmt.summary.interest],
-                    [`Debits (${stmt.summary.debitCount})`, -stmt.summary.debitsTotal],
-                    ['Ending balance', stmt.summary.endingBalance],
-                  ].map(([label, val]) => (
-                    <div key={label} className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-2.5">
-                      <p className="text-[10px] text-white/40">{label}</p>
-                      <p className={`text-sm font-semibold ${val < 0 ? 'text-red-400' : 'text-white'}`}>{formatCurrency(Math.abs(val))}{val < 0 ? ' out' : ''}</p>
+                {/* Per-account blocks — one summary strip + issue list each */}
+                <div className="pt-3 space-y-4">
+                  {accounts.map(a => (
+                    <div key={a.acct}>
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        {a.missing.length === 0 && a.catFixes.length === 0
+                          ? <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
+                          : <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />}
+                        <p className="text-xs font-semibold text-white">•••{a.acct}</p>
+                        <p className="text-[10px] text-white/35 truncate">{a.title}</p>
+                        {a.nonRental && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/[0.06] text-white/50 border border-white/10">non-rental</span>
+                        )}
+                        <span className="text-[10px] text-white/35 ml-auto">
+                          {a.lines.length - a.missing.length}/{a.lines.length} lines in app
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {[
+                          ['Starting balance', a.summary.previousBalance],
+                          [`Deposits (${a.summary.depositCount}) + interest`, a.summary.depositsTotal + a.summary.interest],
+                          [`Debits (${a.summary.debitCount})`, -a.summary.debitsTotal],
+                          ['Ending balance', a.summary.endingBalance],
+                        ].map(([label, val]) => (
+                          <div key={label} className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-2.5">
+                            <p className="text-[10px] text-white/40">{label}</p>
+                            <p className={`text-sm font-semibold ${val < 0 ? 'text-red-400' : 'text-white'}`}>{formatCurrency(Math.abs(val))}{val < 0 ? ' out' : ''}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Missing lines on this account */}
+                      {a.missing.length > 0 && (
+                        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 mt-2">
+                          <p className="text-xs font-semibold text-red-300 mb-2">
+                            {a.missing.length} statement line{a.missing.length === 1 ? '' : 's'} not in the app yet — quick-load {stmt.label} on the Import tab:
+                          </p>
+                          <ul className="space-y-1">
+                            {a.missing.map((l, i) => (
+                              <li key={i} className="text-[11px] text-white/60 flex justify-between gap-3">
+                                <span className="truncate">{l.tx.date.slice(5)} · {l.tx.desc}</span>
+                                <span className={l.tx.flow === 'income' ? 'text-green-400' : 'text-red-400'}>
+                                  {l.tx.flow === 'income' ? '+' : '−'}{formatCurrency(l.tx.amount)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Category problems on this account */}
+                      {a.catFixes.length > 0 && (
+                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 mt-2">
+                          <p className="text-xs font-semibold text-amber-300 mb-2">
+                            Categorized so they'd leak into rental totals — the Fix button above repairs all of these:
+                          </p>
+                          <ul className="space-y-1">
+                            {a.catFixes.map((l, i) => (
+                              <li key={i} className="text-[11px] text-white/60 flex justify-between gap-3">
+                                <span className="truncate">{l.tx.date.slice(5)} · {l.tx.desc}</span>
+                                <span className="text-white/40 flex-shrink-0">{l.matchedRow.category} → <span className="text-amber-300">{l.expectedCat}</span></span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   ))}
+
+                  {/* 3110 — balance only, no line items printed by FFB */}
+                  {(() => {
+                    const b = FFB_3110_BALANCES.find(x => x.monthStr === stmt.monthStr);
+                    if (!b) return null;
+                    return (
+                      <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-white/70">•••3110 — balance only</p>
+                          <p className="text-[10px] text-white/35">
+                            FFB prints no line items for this account. Its activity appears as the “Transfer to XXX3110” debits on •••0410.
+                          </p>
+                        </div>
+                        <p className="text-sm font-semibold text-white flex-shrink-0">{formatCurrency(b.endingBalance)}</p>
+                      </div>
+                    );
+                  })()}
                 </div>
-
-                {/* Missing lines */}
-                {missing.length > 0 && (
-                  <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3">
-                    <p className="text-xs font-semibold text-red-300 mb-2">
-                      {missing.length} statement line{missing.length === 1 ? '' : 's'} not in the app yet — quick-load {stmt.label} on the Import tab:
-                    </p>
-                    <ul className="space-y-1">
-                      {missing.map((l, i) => (
-                        <li key={i} className="text-[11px] text-white/60 flex justify-between gap-3">
-                          <span className="truncate">{l.tx.date.slice(5)} · {l.tx.desc}</span>
-                          <span className={l.tx.flow === 'income' ? 'text-green-400' : 'text-red-400'}>
-                            {l.tx.flow === 'income' ? '+' : '−'}{formatCurrency(l.tx.amount)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Category problems */}
-                {catFixes.length > 0 && (
-                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
-                    <p className="text-xs font-semibold text-amber-300 mb-2">
-                      Categorized so they double-count — the Fix button above repairs all of these:
-                    </p>
-                    <ul className="space-y-1">
-                      {catFixes.map((l, i) => (
-                        <li key={i} className="text-[11px] text-white/60 flex justify-between gap-3">
-                          <span className="truncate">{l.tx.date.slice(5)} · {l.tx.desc}</span>
-                          <span className="text-white/40 flex-shrink-0">{l.matchedRow.category} → <span className="text-amber-300">{l.expectedCat}</span></span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
 
                 {/* Distribution cross-check */}
                 {distChecks.length > 0 && (
