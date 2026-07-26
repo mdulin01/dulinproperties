@@ -7,7 +7,7 @@ import {
   expenseCategories, incomeCategories, taskPriorities, timeHorizons,
   listCategories, ideaCategories, tenantStatuses, rentStatuses,
   operatingExpenseCategories, OPERATING_CATEGORY_VALUES,
-  NON_INCOME_CATEGORIES, countsAsIncome
+  NON_INCOME_CATEGORIES, BUSINESS_INCOME_CATEGORIES, countsAsIncome, isSplitParent
 } from './constants';
 import {
   formatDate, formatCurrency, validateFileSize, isHeicFile, getSafeFileName,
@@ -1146,7 +1146,9 @@ export default function DulinProperties() {
 
                     // YTD expenses broken down (non-template only)
                     const regularExpenses = expenses.filter(e => !e.isTemplate);
-                    const ytdAll = regularExpenses.filter(e => (e.date || '').startsWith(yearStr));
+                    // A bank line that has been split into its parts is excluded from every
+                    // expense total — its children carry the accounting. It stays in the lists.
+                    const ytdAll = regularExpenses.filter(e => (e.date || '').startsWith(yearStr) && !isSplitParent(e));
 
                     // YTD income, split rent vs interest vs other so the dashboard can
                     // show them separately (mom tracks bank interest apart from rent).
@@ -1155,10 +1157,10 @@ export default function DulinProperties() {
                     const paidYtdRent = rentPayments
                       .filter(r => r.status === 'paid' && (r.month || r.datePaid || '').startsWith(yearStr));
                     const ytdInterest = paidYtdRent
-                      .filter(r => r.category === 'interest')
+                      .filter(r => r.category === 'interest' && !isSplitParent(r))
                       .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
                     const ytdOtherIncome = paidYtdRent
-                      .filter(r => r.category === 'refund' || r.category === 'other')
+                      .filter(r => (r.category === 'refund' || r.category === 'other') && !isSplitParent(r))
                       .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
                     // FFB owner-distribution deposits are the managers' rents landing in
                     // the bank — already counted property-by-property, so NOT income here.
@@ -1173,13 +1175,19 @@ export default function DulinProperties() {
                       .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
                     const ytdMistaggedRentAsIncome = ytdAll.filter(isMistaggedIncome)
                       .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
-                    // Pure rent (excludes interest + other-income categories).
+                    // General business income — money the business received that isn't rent
+                    // for any one property. Counts toward income, but not toward rent.
+                    const ytdBusinessIncome = paidYtdRent
+                      .filter(r => r.category === 'business-income' && !isSplitParent(r))
+                      .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+                    // Pure rent (excludes interest, business income + other-income categories).
                     const ytdRentOnly = paidYtdRent
-                      .filter(r => !['interest', 'refund', 'other', ...NON_INCOME_CATEGORIES].includes(r.category))
+                      .filter(r => !isSplitParent(r)
+                        && !['refund', 'other', ...BUSINESS_INCOME_CATEGORIES, ...NON_INCOME_CATEGORIES].includes(r.category))
                       .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0)
                       + ytdMistaggedRentAsIncome;
-                    // Gross income = rent + interest + other.
-                    const ytdRent = ytdRentOnly + ytdInterest + ytdOtherIncome;
+                    // Gross income = rent + interest + business income + other.
+                    const ytdRent = ytdRentOnly + ytdInterest + ytdBusinessIncome + ytdOtherIncome;
                     const ytdMgmtFees = ytdAll.filter(isMgmtFee).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                     const ytdPropertyExp = ytdAll.filter(isPropertyExpense).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                     const ytdBusinessOpEx = ytdAll.filter(isBusinessOp).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
@@ -1213,7 +1221,7 @@ export default function DulinProperties() {
                           && countsAsIncome(r))
                         .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
 
-                      const monthExps = regularExpenses.filter(e => (e.date || '').startsWith(monthStr));
+                      const monthExps = regularExpenses.filter(e => (e.date || '').startsWith(monthStr) && !isSplitParent(e));
                       const mgmt = monthExps.filter(isMgmtFee).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                       const opex = monthExps.filter(isPropertyExpense).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                       const dist = monthExps.filter(isDistribution).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
@@ -1242,10 +1250,11 @@ export default function DulinProperties() {
                           <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center">
                             <p className="text-[10px] font-semibold text-emerald-400/70 uppercase tracking-wider mb-1">YTD Gross Income</p>
                             <p className="text-xl font-bold text-emerald-400">{formatCurrency(ytdRent)}</p>
-                            {(ytdInterest > 0 || ytdOtherIncome > 0 || ytdBankDistributions > 0 || ytdNonRental > 0) && (
+                            {(ytdInterest > 0 || ytdBusinessIncome > 0 || ytdOtherIncome > 0 || ytdBankDistributions > 0 || ytdNonRental > 0) && (
                               <p className="text-[9px] text-white/30 mt-1">
                                 Rent: {formatCurrency(ytdRentOnly)}
                                 {ytdInterest > 0 ? ` · Interest: ${formatCurrency(ytdInterest)}` : ''}
+                                {ytdBusinessIncome > 0 ? ` · Business income: ${formatCurrency(ytdBusinessIncome)}` : ''}
                                 {ytdOtherIncome > 0 ? ` · Other: ${formatCurrency(ytdOtherIncome)}` : ''}
                                 {ytdBankDistributions > 0 ? ` · Bank distributions (not counted): ${formatCurrency(ytdBankDistributions)}` : ''}
                                 {ytdNonRental > 0 ? ` · Non-rental / personal (not counted): ${formatCurrency(ytdNonRental)}` : ''}

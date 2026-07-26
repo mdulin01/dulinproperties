@@ -611,6 +611,10 @@ export function ffbStatementToEntries(stmt, accts) {
         category: item.cat || '',
         vendor: item.vendor || '',
         checkNumber: item.checkNum || '',
+        // FFB prints no payee for ordinary checks — only the number. When we do
+        // know who a check went to it lives on `payee`; otherwise Dianne fills
+        // it in from her checkbook after import.
+        payee: item.payee || item.vendor || '',
         account: `...${a.acct}`,
         ffbAccount: a.acct,
         tenantName: '',

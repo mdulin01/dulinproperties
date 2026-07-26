@@ -56,11 +56,14 @@ export default function FFBReconciliation({
 
   const monthResults = useMemo(() => {
     // Imported FFB rows, normalized to a common shape.
+    // Split parts inherit their parent's source and date, so they'd otherwise
+    // compete with the real bank line for a match. Only the parent — the row
+    // that actually hit the bank — belongs in the pool.
     const ffbIncomes = (rentPayments || [])
-      .filter(r => r.sourceDocument === 'FFB Bank')
+      .filter(r => r.sourceDocument === 'FFB Bank' && !r.splitChildOf)
       .map(r => ({ kind: 'income', id: r.id, date: (r.datePaid || `${r.month || ''}-01`).slice(0, 10), amount: round2(r.amount), category: r.category || 'rent', used: false }));
     const ffbExpenses = (expenses || [])
-      .filter(e => e.sourceDocument === 'FFB Bank')
+      .filter(e => e.sourceDocument === 'FFB Bank' && !e.splitChildOf)
       .map(e => ({ kind: 'expense', id: e.id, date: (e.date || '').slice(0, 10), amount: round2(e.amount), category: e.category || 'other', used: false }));
 
     // Owner-distribution expense rows from the owner packets, summed per

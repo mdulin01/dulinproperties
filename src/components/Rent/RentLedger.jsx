@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { Search, Plus, ChevronDown, ChevronUp, DollarSign, CheckSquare, Square, X, Trash2 } from 'lucide-react';
-import { rentStatuses, incomeCategories, countsAsIncome } from '../../constants';
+import { rentStatuses, incomeCategories, countsAsIncome, isBusinessIncome } from '../../constants';
 import { formatDate, formatCurrency, parseAmountQuery, matchesAmountQuery } from '../../utils';
 import { getPropertyTenants } from '../../hooks/useProperties';
 
@@ -149,7 +149,11 @@ export default function RentLedger({ rentPayments, properties, onAdd, onEdit, on
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const thisMonthPayments = rentPayments.filter(r => r.month === currentMonth);
-  const collected = thisMonthPayments.filter(r => r.status === 'paid' && countsAsIncome(r)).reduce((sum, r) => sum + (r.amount || 0), 0);
+  // Compared against expected monthly rent, so business-level income (bank
+  // interest, general business income) is excluded — it isn't rent owed by anyone.
+  const collected = thisMonthPayments
+    .filter(r => r.status === 'paid' && countsAsIncome(r) && !isBusinessIncome(r))
+    .reduce((sum, r) => sum + (r.amount || 0), 0);
   const outstanding = totalExpected - collected;
 
   return (

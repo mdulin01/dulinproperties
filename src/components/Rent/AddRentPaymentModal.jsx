@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Trash2, Split, Plus } from 'lucide-react';
-import { rentStatuses, incomeCategories } from '../../constants';
+import { rentStatuses, incomeCategories, isBusinessIncome } from '../../constants';
 import { getPropertyTenants } from '../../hooks/useProperties';
 import Combobox from '../Combobox';
 
@@ -68,6 +68,11 @@ export default function AddRentPaymentModal({ payment, properties, onSave, onDel
     }));
   };
 
+  // Business-level income (interest, general business income) is recorded
+  // against the business, not a property, so the property field and the
+  // property requirement both drop away.
+  const businessLevel = isBusinessIncome(form);
+
   // ---- Split helpers ----
   const splitTotal = splitRows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
   const splitRemainder = (parseFloat(form.amount) || 0) - splitTotal;
@@ -106,9 +111,13 @@ export default function AddRentPaymentModal({ payment, properties, onSave, onDel
       return;
     }
 
-    if (!form.propertyId) return;
+    // Business-level income has no property by design; everything else needs one.
+    if (!form.propertyId && !businessLevel) return;
     onSave({
       ...form,
+      propertyId: businessLevel ? '' : form.propertyId,
+      propertyName: businessLevel ? '' : form.propertyName,
+      tenantName: businessLevel ? '' : form.tenantName,
       amount: parseFloat(form.amount) || 0,
     });
   };
@@ -142,8 +151,10 @@ export default function AddRentPaymentModal({ payment, properties, onSave, onDel
             </button>
           )}
 
-          {/* Property — single select (hidden in split mode) */}
-          {!splitMode && (
+          {/* Property — single select. Hidden in split mode, and not needed for
+              business-level income (bank interest, general business income),
+              which belongs to the business rather than to any one property. */}
+          {!splitMode && !businessLevel && (
             <div>
               <label className="text-xs text-white/40 mb-1 block" htmlFor="rent-prop">Property</label>
               <Combobox
@@ -154,6 +165,15 @@ export default function AddRentPaymentModal({ payment, properties, onSave, onDel
                 placeholder="Type to search…"
                 className="px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50"
               />
+            </div>
+          )}
+          {!splitMode && businessLevel && (
+            <div className="rounded-xl border border-sky-500/25 bg-sky-500/[0.07] px-3 py-2.5">
+              <p className="text-xs text-sky-300 font-medium">🏛️ Business-level income — no property needed</p>
+              <p className="text-[11px] text-white/50 mt-1 leading-relaxed">
+                This counts toward your total income but isn't rent for any one property, so it stays
+                out of the per-property rent lines on Schedule E and is listed separately for Alex.
+              </p>
             </div>
           )}
 
@@ -171,7 +191,8 @@ export default function AddRentPaymentModal({ payment, properties, onSave, onDel
             </select>
           </div>
 
-          {/* Tenant */}
+          {/* Tenant — meaningless for business-level income */}
+          {!businessLevel && (
           <div>
             <label className="text-xs text-white/40 mb-1 block">Tenant</label>
             <input
@@ -182,6 +203,7 @@ export default function AddRentPaymentModal({ payment, properties, onSave, onDel
               className="w-full px-3 py-2 bg-white/[0.05] border border-white/[0.08] rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50"
             />
           </div>
+          )}
 
           {/* Month */}
           <div>
@@ -309,7 +331,7 @@ export default function AddRentPaymentModal({ payment, properties, onSave, onDel
           ) : <div />}
           <button
             onClick={handleSave}
-            disabled={splitMode ? !splitValid : !form.propertyId}
+            disabled={splitMode ? !splitValid : (!form.propertyId && !businessLevel)}
             className="px-6 py-2 bg-emerald-500 text-white rounded-xl text-sm font-medium hover:bg-emerald-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isEditing ? 'Update' : splitMode ? `Save Split (${splitRows.filter(r => r.propertyId && parseFloat(r.amount) > 0).length})` : 'Record Income'}

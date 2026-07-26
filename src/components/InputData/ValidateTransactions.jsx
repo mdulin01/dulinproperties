@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Check, Edit3, Trash2, AlertCircle, ChevronDown, ChevronRight, FileText, CheckCheck, Filter, Search, X, Plus, ArrowRightLeft } from 'lucide-react';
+import { Check, Edit3, Trash2, AlertCircle, ChevronDown, ChevronRight, FileText, CheckCheck, Filter, Search, X, Plus, ArrowRightLeft, Scissors, UserPlus } from 'lucide-react';
 import HelpTip from '../HelpTip';
+import SplitEntryModal from './SplitEntryModal';
 import { formatCurrency, parseAmountQuery, matchesAmountQuery } from '../../utils';
 
 const SOURCES = ['Barnett & Hill', 'Absolute', 'FFB Bank', 'Citi Card', 'Costco Card'];
@@ -22,6 +23,7 @@ export default function ValidateTransactions({
   expenses,
   rentPayments,
   properties,
+  bulkAddExpenses,
   bulkAddRentPayments,
   bulkDeleteExpenses,
   bulkDeleteRentPayments,
@@ -52,6 +54,10 @@ export default function ValidateTransactions({
   const [renaming, setRenaming] = useState(false);
   const [dedupOpen, setDedupOpen] = useState(false);
   const [deduping, setDeduping] = useState(false);
+  // The bank line currently open in the split editor.
+  const [splitRow, setSplitRow] = useState(null);
+  // Inline "who was this check to?" editor: { key, value }.
+  const [payeeEdit, setPayeeEdit] = useState(null);
 
   // Detect expense rows with an income category — these are rent rows that
   // were filed into the expenses collection by the old parser. The migration
@@ -257,6 +263,12 @@ export default function ValidateTransactions({
         propertyName: e.propertyName,
         notes: e.notes,
         validated: !!e.validated,
+        payee: e.payee || '',
+        checkNumber: e.checkNumber || '',
+        bankAccount: e.bankAccount || '',
+        splitParent: e.splitParent === true,
+        splitGroupId: e.splitGroupId || '',
+        splitChildOf: e.splitChildOf || '',
         raw: e,
       });
     }
@@ -277,6 +289,12 @@ export default function ValidateTransactions({
         propertyName: r.propertyName,
         notes: r.notes,
         validated: !!r.validated,
+        payee: '',
+        checkNumber: '',
+        bankAccount: r.bankAccount || '',
+        splitParent: r.splitParent === true,
+        splitGroupId: r.splitGroupId || '',
+        splitChildOf: r.splitChildOf || '',
         raw: r,
       });
     }
@@ -423,6 +441,230 @@ export default function ValidateTransactions({
     const [y, m, d] = s.split('-');
     if (!y || !m || !d) return s;
     return new Date(parseInt(y), parseInt(m) - 1, parseInt(d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  // Save the payee Dianne typed for a check. FFB never prints one — only she
+  // knows from her checkbook who "Check #6450" went to.
+  const savePayee = (row) => {
+    const value = (payeeEdit?.value || '').trim();
+    setPayeeEdit(null);
+    if (!value) return;
+    if (row.kind === 'expense') {
+      // vendor gets it too so search, Schedule E vendor lists and the expense
+      // views all show the name, not just this screen.
+      updateExpense(row.id, { payee: value, vendor: row.raw?.vendor || value });
+    } else {
+      updateRentPayment(row.id, { payee: value });
+    }
+  };
+
+  // A plain check row: the bank gave us a number and nothing else. Worth
+  // prompting for a name; a Vexus or Lowe's line already tells us who it was.
+  const isNamelessCheck = (row) =>
+    row.kind === 'expense' && !!row.checkNumber && !row.payee && !row.vendor;
+
+  /** One transaction line. `children` are its split parts, rendered indented. */
+  const renderRow = (row, children = []) => {
+    const isIncome = row.kind === 'rent';
+    const isChild = !!row.splitChildOf;
+    const edgeCls = row.splitParent
+      ? 'border-l-4 border-l-violet-400/70 bg-violet-500/[0.04]'
+      : row.validated
+        ? 'border-l-4 border-l-emerald-500/60 bg-emerald-500/[0.03]'
+        : 'border-l-4 border-l-amber-500/60';
+    // The check number is only worth a badge if the description doesn't
+    // already carry it — otherwise the line reads "Check #6450  #6450".
+    const showCheckBadge = row.checkNumber && !String(row.description || '').includes(row.checkNumber);
+    const payeeName = row.payee || row.vendor || '';
+    // Notes that just repeat the description add nothing.
+    const showNotes = row.notes && !String(row.description || '').includes(String(row.notes));
+    const editingPayee = payeeEdit?.key === `${row.kind}-${row.id}`;
+
+    return (
+      <React.Fragment key={`${row.kind}-${row.id}`}>
+        <div
+          className={`flex flex-col md:flex-row md:items-center gap-2 md:gap-3 px-4 py-3 border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition ${edgeCls} ${isChild ? 'md:pl-12 bg-white/[0.015]' : ''}`}
+        >
+          {/* Validation status icon */}
+          <div className="flex-shrink-0">
+            {row.validated ? (
+              <span
+                className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-300"
+                title="Validated"
+              >
+                <Check className="w-4 h-4" />
+              </span>
+            ) : (
+              <span
+                className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-500/15 text-amber-300"
+                title="Needs review"
+              >
+                <AlertCircle className="w-4 h-4" />
+              </span>
+            )}
+          </div>
+
+          {/* Core info — date + description */}
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="text-xs font-mono text-white/50">{formatDate(row.date)}</span>
+              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                isIncome ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'
+              }`}>
+                {isIncome ? 'Income' : 'Expense'}
+              </span>
+              {!isChild && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/[0.06] text-white/60">
+                  {row.source}
+                </span>
+              )}
+              {row.bankAccount && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/[0.04] text-white/45 font-mono" title="Which bank account this came from">
+                  {row.bankAccount}
+                </span>
+              )}
+              {row.category && row.category !== 'rent' && (
+                <span className="text-[10px] text-white/40">· {row.category}</span>
+              )}
+              {row.splitParent && (
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-500/20 text-violet-200">
+                  split into {row.splitPartCount || row.raw?.splitPartCount || children.length || '?'} parts — doesn&rsquo;t count on its own
+                </span>
+              )}
+              {isChild && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-300/80">
+                  part of a split
+                </span>
+              )}
+            </div>
+            <div className="text-sm text-white mt-0.5 flex flex-wrap items-baseline gap-x-1.5">
+              <span>{row.description}</span>
+              {showCheckBadge && (
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-300/70">
+                  #{row.checkNumber}
+                </span>
+              )}
+              {payeeName && <span className="text-xs text-white/55">→ {payeeName}</span>}
+              {/* FFB prints no payee for ordinary checks, so offer to record it. */}
+              {!editingPayee && isNamelessCheck(row) && (
+                <button
+                  onClick={() => setPayeeEdit({ key: `${row.kind}-${row.id}`, value: '' })}
+                  className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-sky-500/10 border border-sky-500/25 text-sky-300 hover:bg-sky-500/20 transition"
+                  title="The bank only prints the check number — add who you wrote it to"
+                >
+                  <UserPlus className="w-3 h-3" /> who was this to?
+                </button>
+              )}
+              {!editingPayee && payeeName && (
+                <button
+                  onClick={() => setPayeeEdit({ key: `${row.kind}-${row.id}`, value: payeeName })}
+                  className="text-[10px] text-white/30 hover:text-white/70 underline-offset-2 hover:underline"
+                >
+                  edit
+                </button>
+              )}
+            </div>
+            {editingPayee && (
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <input
+                  autoFocus
+                  type="text"
+                  value={payeeEdit.value}
+                  onChange={(e) => setPayeeEdit({ ...payeeEdit, value: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') savePayee(row);
+                    if (e.key === 'Escape') setPayeeEdit(null);
+                  }}
+                  placeholder="Who was this check to? e.g. Alex Jochum"
+                  className="bg-white/[0.08] border border-sky-500/40 text-white text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-sky-400 placeholder-white/30 min-w-[220px]"
+                />
+                <button
+                  onClick={() => savePayee(row)}
+                  className="text-[11px] px-2 py-1 rounded-lg bg-sky-500 hover:bg-sky-400 text-sky-950 font-semibold"
+                >
+                  Save
+                </button>
+                <button onClick={() => setPayeeEdit(null)} className="text-[11px] text-white/40 hover:text-white/70 px-1">Cancel</button>
+              </div>
+            )}
+            {(row.propertyName || showNotes) && (
+              <div className="text-xs text-white/50 mt-0.5">
+                {row.propertyName}
+                {showNotes && <span className="text-white/30">{row.propertyName ? ' · ' : ''}{row.notes}</span>}
+              </div>
+            )}
+          </div>
+
+          {/* Amount */}
+          <div className="flex-shrink-0 text-right md:min-w-[100px]">
+            <div className={`text-base font-bold ${
+              row.splitParent
+                ? 'text-white/35 line-through decoration-white/30'
+                : isIncome ? 'text-emerald-300' : 'text-red-300'
+            }`}>
+              {isIncome ? '+' : '−'}{formatCurrency(Math.abs(row.amount))}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {row.validated ? (
+              <button
+                onClick={() => setValidated(row, false)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/[0.05] border border-white/10 text-white/50 hover:text-white/80 hover:bg-white/[0.08] text-xs transition"
+                title="Undo validation"
+              >
+                Unvalidate
+              </button>
+            ) : (
+              <button
+                onClick={() => setValidated(row, true)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 text-xs font-medium transition"
+                title="Mark this entry as reviewed and correct"
+              >
+                <Check className="w-3.5 h-3.5" />
+                Validate
+              </button>
+            )}
+            {!isChild && bulkAddExpenses && bulkAddRentPayments && (
+              <button
+                onClick={() => setSplitRow(row)}
+                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition ${
+                  row.splitParent
+                    ? 'bg-violet-500/25 border border-violet-400/40 text-violet-100 hover:bg-violet-500/35'
+                    : 'bg-violet-500/10 border border-violet-500/25 text-violet-300 hover:bg-violet-500/25'
+                }`}
+                title={row.splitParent
+                  ? 'Review or undo this split'
+                  : 'Break this one bank entry into the several things it paid for'}
+              >
+                <Scissors className="w-3.5 h-3.5" />
+                {row.splitParent ? 'Split ✓' : 'Split'}
+              </button>
+            )}
+            <button
+              onClick={() => {
+                if (row.kind === 'expense') onEditExpense?.(row.raw);
+                else onEditRent?.(row.raw);
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-300 hover:bg-sky-500/25 text-xs font-medium transition"
+              title="Edit this entry"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              Edit
+            </button>
+            <button
+              onClick={() => setConfirmDiscard({ row, label: row.description })}
+              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/25 transition"
+              title="Discard this entry"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        {children.map(c => renderRow(c, []))}
+      </React.Fragment>
+    );
   };
 
   return (
@@ -884,7 +1126,20 @@ export default function ValidateTransactions({
         {bySourceMonth.map(([groupKey, { source, ym, rows }]) => {
           const expanded = isExpanded(groupKey);
           const unvalidatedCount = rows.filter(r => !r.validated).length;
-          const totalAmt = rows.reduce((s, r) => s + (r.kind === 'rent' ? r.amount : -r.amount), 0);
+          // Nest split parts under the bank line they came from, and leave them
+          // out of the group's net — the net has to keep matching the statement,
+          // and the parts already add up to their parent.
+          const idsHere = new Set(rows.map(r => String(r.id)));
+          const childrenByParent = new Map();
+          for (const r of rows) {
+            if (r.splitChildOf && idsHere.has(String(r.splitChildOf))) {
+              const arr = childrenByParent.get(String(r.splitChildOf)) || [];
+              arr.push(r);
+              childrenByParent.set(String(r.splitChildOf), arr);
+            }
+          }
+          const topRows = rows.filter(r => !(r.splitChildOf && idsHere.has(String(r.splitChildOf))));
+          const totalAmt = topRows.reduce((s, r) => s + (r.kind === 'rent' ? r.amount : -r.amount), 0);
           const groupLabel = `${source} — ${monthLabel(ym)}`;
           return (
             <div key={groupKey} className="border border-white/10 rounded-2xl overflow-hidden bg-white/[0.02]">
@@ -921,120 +1176,34 @@ export default function ValidateTransactions({
                 )}
               </div>
 
-              {/* Rows */}
+              {/* Rows — split parts nest under the bank line they came from */}
               {expanded && (
                 <div>
-                  {rows.map(row => {
-                    const isIncome = row.kind === 'rent';
-                    const edgeCls = row.validated
-                      ? 'border-l-4 border-l-emerald-500/60 bg-emerald-500/[0.03]'
-                      : 'border-l-4 border-l-amber-500/60';
-                    return (
-                      <div
-                        key={`${row.kind}-${row.id}`}
-                        className={`flex flex-col md:flex-row md:items-center gap-2 md:gap-3 px-4 py-3 border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition ${edgeCls}`}
-                      >
-                        {/* Validation status icon */}
-                        <div className="flex-shrink-0">
-                          {row.validated ? (
-                            <span
-                              className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-300"
-                              title="Validated"
-                            >
-                              <Check className="w-4 h-4" />
-                            </span>
-                          ) : (
-                            <span
-                              className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-500/15 text-amber-300"
-                              title="Needs review"
-                            >
-                              <AlertCircle className="w-4 h-4" />
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Core info — date + description */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex flex-wrap items-baseline gap-2">
-                            <span className="text-xs font-mono text-white/50">{formatDate(row.date)}</span>
-                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                              isIncome ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'
-                            }`}>
-                              {isIncome ? 'Income' : 'Expense'}
-                            </span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/[0.06] text-white/60">
-                              {row.source}
-                            </span>
-                            {row.category && row.category !== 'rent' && (
-                              <span className="text-[10px] text-white/40">· {row.category}</span>
-                            )}
-                          </div>
-                          <div className="text-sm text-white mt-0.5">
-                            {row.description}
-                          </div>
-                          {row.propertyName && (
-                            <div className="text-xs text-white/50 mt-0.5">
-                              {row.propertyName}
-                              {row.notes && <span className="text-white/30"> · {row.notes}</span>}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Amount */}
-                        <div className="flex-shrink-0 text-right md:min-w-[100px]">
-                          <div className={`text-base font-bold ${isIncome ? 'text-emerald-300' : 'text-red-300'}`}>
-                            {isIncome ? '+' : '−'}{formatCurrency(Math.abs(row.amount))}
-                          </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                          {row.validated ? (
-                            <button
-                              onClick={() => setValidated(row, false)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/[0.05] border border-white/10 text-white/50 hover:text-white/80 hover:bg-white/[0.08] text-xs transition"
-                              title="Undo validation"
-                            >
-                              Unvalidate
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => setValidated(row, true)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 text-xs font-medium transition"
-                              title="Mark this entry as reviewed and correct"
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                              Validate
-                            </button>
-                          )}
-                          <button
-                            onClick={() => {
-                              if (row.kind === 'expense') onEditExpense?.(row.raw);
-                              else onEditRent?.(row.raw);
-                            }}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-300 hover:bg-sky-500/25 text-xs font-medium transition"
-                            title="Edit this entry"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => setConfirmDiscard({ row, label: row.description })}
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/25 transition"
-                            title="Discard this entry"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {topRows.map(row => renderRow(row, childrenByParent.get(String(row.id)) || []))}
                 </div>
               )}
             </div>
           );
         })}
       </div>
+
+      {/* Split editor — break one bank line into its real parts */}
+      {splitRow && (
+        <SplitEntryModal
+          row={splitRow}
+          properties={properties}
+          expenses={expenses}
+          rentPayments={rentPayments}
+          bulkAddExpenses={bulkAddExpenses}
+          bulkAddRentPayments={bulkAddRentPayments}
+          bulkUpdateExpenses={bulkUpdateExpenses}
+          bulkUpdateRentPayments={bulkUpdateRentPayments}
+          bulkDeleteExpenses={bulkDeleteExpenses}
+          bulkDeleteRentPayments={bulkDeleteRentPayments}
+          onClose={() => setSplitRow(null)}
+          showToast={showToast}
+        />
+      )}
 
       {/* Discard confirm */}
       {confirmDiscard && (

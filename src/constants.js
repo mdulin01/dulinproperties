@@ -167,7 +167,9 @@ export const incomeCategories = [
   { value: 'refund', label: 'Refund', emoji: '↩️' },
   { value: 'parking', label: 'Parking', emoji: '🅿️' },
   { value: 'laundry', label: 'Laundry', emoji: '🧺' },
-  { value: 'interest', label: 'Interest', emoji: '🏦' },
+  // Business-level income — no property required. See BUSINESS_INCOME_CATEGORIES.
+  { value: 'interest', label: 'Interest (business, no property)', emoji: '🏦' },
+  { value: 'business-income', label: 'General Business Income (no property)', emoji: '🏛️' },
   { value: 'other', label: 'Other Income', emoji: '💵' },
 ];
 
@@ -253,13 +255,48 @@ export const propertyColors = [
 //   • Expense rows with category 'transfer' — credit-card bill payments (the
 //     card statements carry the real deductible line items), investment buys,
 //     internal account transfers, and personal outflows.
+//   • Any row flagged `splitParent: true` — a bank line that has been broken
+//     into its parts (see SPLITS below). The parts carry the accounting; the
+//     bank line stays visible only so the statement still reconciles.
+//
+// SPLITS
+// One bank line often covers several things at once: a Lowe's charge spanning
+// three properties, an HOA payment for three condos, a management company's
+// monthly deposit that is really gross rent minus fees minus repairs. Splitting
+// a line creates child rows (`splitChildOf` = the parent's id, sharing a
+// `splitGroupId`) and marks the original `splitParent: true`. Amounts stay
+// POSITIVE on both sides — an income child is money in, an expense child is
+// money out — and the split balances when
+// (sum of income children) − (sum of expense children) equals the parent's
+// signed amount. Nothing needs to be entered as a negative number.
+//
+// Children may also be rows Dianne already entered by hand from the owner
+// packets; linking those just stamps `splitGroupId`/`splitChildOf` onto them so
+// nothing has to be retyped.
 // ---------------------------------------------------------------------------
 
 /** Income categories that are recorded for reconciliation but are NOT rental income. */
 export const NON_INCOME_CATEGORIES = ['owner-distribution', 'non-rental'];
 
-/** True when a rent-payment/income row should count toward rental income totals. */
-export const countsAsIncome = (r) => !NON_INCOME_CATEGORIES.includes(r?.category || 'rent');
+/**
+ * Income that belongs to the business as a whole rather than to one property —
+ * bank interest, and anything else Dianne files as general business income.
+ * These DO count as income; they are just not per-property rent, so they stay
+ * out of the rent-only subtotal and off the per-property Schedule E rent lines.
+ */
+export const BUSINESS_INCOME_CATEGORIES = ['interest', 'business-income'];
+export const isBusinessIncome = (r) => BUSINESS_INCOME_CATEGORIES.includes(r?.category);
+
+/** A bank line that has been broken into parts — the parts count, it doesn't. */
+export const isSplitParent = (row) => row?.splitParent === true;
+
+/** True when a rent-payment/income row should count toward income totals. */
+export const countsAsIncome = (r) =>
+  !NON_INCOME_CATEGORIES.includes(r?.category || 'rent') && !isSplitParent(r);
 
 /** True when an expense row is a transfer/non-rental outflow (excluded from expense totals). */
 export const isTransferExpense = (e) => e?.category === 'transfer';
+
+/** True when an expense row should count toward deductible expense totals. */
+export const countsAsExpense = (e) =>
+  !isTransferExpense(e) && e?.category !== 'owner-distribution' && !isSplitParent(e);

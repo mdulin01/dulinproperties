@@ -533,6 +533,10 @@ export default function DocumentImport({
         propertyId: entry.propertyId || '',
         propertyName: entry.propertyName || '',
         sourceDocument: entry.sourceDocument,
+        // Which bank account the row came from (e.g. '...5710'). Without this,
+        // rows from the four bundled FFB accounts are indistinguishable once
+        // imported and there's no way to reconcile one account on its own.
+        bankAccount: entry.account || '',
         fingerprint: fp,
         validated: false,
       };
@@ -555,8 +559,17 @@ export default function DocumentImport({
           amount: entry.amount,
           date: entry.date,
           vendor: entry.vendor || '',
-          notes: entry.checkNumber ? `Check #${entry.checkNumber}` : (entry.notes || ''),
+          // Only repeat the check number in the notes when the description
+          // doesn't already say it — otherwise the ledger reads "Check #6450"
+          // twice on the same line, which is exactly what Dianne saw.
+          notes: (entry.checkNumber && !String(entry.description || '').includes(entry.checkNumber))
+            ? `Check #${entry.checkNumber}`
+            : (entry.notes || ''),
           checkNumber: entry.checkNumber || '',
+          // FFB prints no payee for ordinary checks — only the number. `payee`
+          // starts empty and Dianne fills it in from her checkbook; the ledger
+          // shows "Check #6450 → Alex Jochum" once she has.
+          payee: entry.payee || entry.vendor || '',
         });
       }
     });
@@ -1365,10 +1378,16 @@ export default function DocumentImport({
                         <td className="px-3 py-2 text-xs text-white/60 whitespace-nowrap">{entry.date}</td>
                         <td className="px-3 py-2">
                           <span className="text-xs text-white/80">{entry.description}</span>
-                          {entry.checkNumber && (
+                          {/* Only badge the check number when the description doesn't already
+                              carry it — otherwise plain checks read "Check #6450  #6450". */}
+                          {entry.checkNumber && !String(entry.description || '').includes(entry.checkNumber) && (
                             <span className="ml-1.5 text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400/70">
                               #{entry.checkNumber}
                             </span>
+                          )}
+                          {/* Payee, when known. FFB doesn't print one for ordinary checks. */}
+                          {(entry.payee || entry.vendor) && (
+                            <span className="ml-1.5 text-[10px] text-white/45">→ {entry.payee || entry.vendor}</span>
                           )}
                           {(entry.tenantName || entry.account) && (
                             <span className="block text-[10px] text-white/30">

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { X, Download, Printer, AlertCircle } from 'lucide-react';
 import { formatCurrency } from '../utils';
-import { countsAsIncome } from '../constants';
+import { countsAsIncome, countsAsExpense, isBusinessIncome, incomeCategories } from '../constants';
 import HelpTip from './HelpTip';
 
 /**
@@ -150,6 +150,10 @@ export default function ScheduleE({ properties, expenses, rentPayments, onClose 
       // bank — the per-property rents are already counted, so skip them here.
       // 'non-rental' rows are personal credits on the bundled FFB accounts.
       if (!countsAsIncome(rp)) continue;
+      // Bank interest and general business income belong to the business, not to
+      // a rental, so they are not "Rents received" on any property's line 3.
+      // They're totalled separately below for Alex to place.
+      if (isBusinessIncome(rp)) continue;
       const ym = rp.month || (rp.datePaid || '').slice(0, 7);
       if (!ym.startsWith(yearStr)) continue;
       const amt = parseFloat(rp.amount) || 0;
@@ -163,8 +167,9 @@ export default function ScheduleE({ properties, expenses, rentPayments, onClose 
     // Property-tied expenses (skip distributions and business op-* — those are handled separately below).
     for (const e of expenses || []) {
       if ((e.date || '').slice(0, 4) !== yearStr) continue;
-      if (e.category === 'owner-distribution') continue; // distributions are not Schedule E expenses
-      if (e.category === 'transfer') continue; // card payments / investment buys / personal — not deductible here
+      // Skips distributions, transfers (card payments / investment buys / personal),
+      // and bank lines that have been split — their parts are counted instead.
+      if (!countsAsExpense(e)) continue;
       if (OP_CATEGORIES.has(e.category)) continue; // allocated pro-rata after this loop
       const amt = parseFloat(e.amount) || 0;
       if (!amt) continue;
@@ -186,6 +191,7 @@ export default function ScheduleE({ properties, expenses, rentPayments, onClose 
     if (eligibleRows.length > 0) {
       for (const e of expenses || []) {
         if ((e.date || '').slice(0, 4) !== yearStr) continue;
+        if (!countsAsExpense(e)) continue;
         if (!OP_CATEGORIES.has(e.category)) continue;
         const amt = parseFloat(e.amount) || 0;
         if (!amt) continue;
@@ -212,6 +218,7 @@ export default function ScheduleE({ properties, expenses, rentPayments, onClose 
       // No properties to allocate against — dump on unassigned so the amount isn't lost.
       for (const e of expenses || []) {
         if ((e.date || '').slice(0, 4) !== yearStr) continue;
+        if (!countsAsExpense(e)) continue;
         if (!OP_CATEGORIES.has(e.category)) continue;
         const amt = parseFloat(e.amount) || 0;
         if (!amt) continue;
@@ -248,6 +255,31 @@ export default function ScheduleE({ properties, expenses, rentPayments, onClose 
     const expense = LINE_ORDER.filter(l => l.line >= 5).reduce((s, l) => s + (totals[l.line] || 0), 0);
     return { lines: totals, income, expense, net: income - expense };
   }, [byProperty]);
+
+  /**
+   * Business-level income for the year — bank interest and general business
+   * income. Deliberately NOT on any property's line 3: Schedule E line 3 is
+   * "Rents received", and interest earned on the business bank account isn't
+   * rent. Shown as its own block so Alex can decide where it belongs rather
+   * than having it silently inflate rental income.
+   */
+  const businessIncome = useMemo(() => {
+    const yearStr = String(year);
+    const byCat = {};
+    let total = 0;
+    for (const rp of rentPayments || []) {
+      if (rp.status !== 'paid') continue;
+      if (!countsAsIncome(rp) || !isBusinessIncome(rp)) continue;
+      const ym = rp.month || (rp.datePaid || '').slice(0, 7);
+      if (!ym.startsWith(yearStr)) continue;
+      const amt = parseFloat(rp.amount) || 0;
+      if (!amt) continue;
+      byCat[rp.category] = (byCat[rp.category] || 0) + amt;
+      total += amt;
+    }
+    const label = (v) => incomeCategories.find(c => c.value === v)?.label || v;
+    return { total, rows: Object.entries(byCat).map(([cat, amt]) => ({ cat, label: label(cat), amt })) };
+  }, [rentPayments, year]);
 
   const handleDownloadCsv = () => {
     const header = [
@@ -364,6 +396,32 @@ export default function ScheduleE({ properties, expenses, rentPayments, onClose 
               </div>
             </div>
           </div>
+
+          {/* Business-level income — reported apart from per-property rents */}
+          {businessIncome.total > 0 && (
+            <div className="rounded-xl border border-sky-500/20 bg-sky-500/[0.05] p-3.5 mb-5">
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div>
+                  <p className="text-sm font-semibold text-sky-200">🏛️ Business income — not Schedule E rents</p>
+                  <p className="text-[11px] text-white/50 mt-0.5 leading-relaxed max-w-xl">
+                    Money the business received that isn't rent from any one property, so it is not
+                    included in the totals above or on any property's line 3. Bank interest is usually
+                    reported as interest income rather than on Schedule E — confirm the treatment with Alex.
+                  </p>
+                </div>
+                <div className="text-lg font-bold text-sky-300 whitespace-nowrap">
+                  {formatCurrency(businessIncome.total)}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 pt-2 border-t border-white/[0.08]">
+                {businessIncome.rows.map(r => (
+                  <span key={r.cat} className="text-[11px] text-white/60">
+                    {r.label}: <span className="text-white/85 font-medium">{formatCurrency(r.amt)}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           {byProperty.length === 0 && (
             <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl mb-4">
