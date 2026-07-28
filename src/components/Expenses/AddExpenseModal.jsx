@@ -203,6 +203,12 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
             splitGroupId,
           };
         });
+      // In edit-mode we're replacing the original row with the split. Tell the
+      // parent which row to delete after the batch write. The parent handler
+      // reads `_replaceExistingId` off the array to decide.
+      if (isEditing && expense?.id) {
+        rows._replaceExistingId = expense.id;
+      }
       onSave(rows); // array → parent batches them
       return;
     }
@@ -432,8 +438,12 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
                 />
               </div>
 
-              {/* Split toggle — only when creating a property-tied, non-recurring expense */}
-              {!isOperating && !form.recurring && !isEditing && (
+              {/* Split toggle — for property-tied, non-recurring expenses. Available
+                  when editing too, so mom can take a single imported payment
+                  (e.g. a $4,786 Citibank card payment covering 4 insurance
+                  premiums) and divide it across properties. In edit-mode the
+                  parent handler replaces the original row with the split. */}
+              {!isOperating && !form.recurring && (
                 <button
                   type="button"
                   onClick={() => setSplitMode(v => !v)}
@@ -444,7 +454,7 @@ export default function AddExpenseModal({ expense, properties, onSave, onDelete,
                   }`}
                 >
                   <Split className="w-3.5 h-3.5" />
-                  Split across properties
+                  {isEditing ? 'Split this into multiple properties' : 'Split across properties'}
                 </button>
               )}
 
