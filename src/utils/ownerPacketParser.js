@@ -167,6 +167,21 @@ const KNOWN_TYPES = [
 ];
 
 /**
+ * Find the transaction type named in a piece of text, preferring the most
+ * specific match. "Security Deposit Transfer" is a security deposit, not a
+ * deposit; "Management Fees" is not merely a fee. Scanning KNOWN_TYPES in
+ * order would return whichever happens to be listed first.
+ */
+function detectType(text) {
+  const hay = (text || '').toLowerCase();
+  let best = '';
+  for (const kt of KNOWN_TYPES) {
+    if (hay.includes(kt) && kt.length > best.length) best = kt;
+  }
+  return best;
+}
+
+/**
  * Read the x-anchors of the money columns out of the transaction-table header
  * row ("… | Cash In | Cash Out | Balance").
  *
@@ -248,6 +263,18 @@ export function assignAmountColumns(amounts, columns, tolerance = 40) {
 // explicit word "unpaid" counts here.
 const UNPAID_ROW_RE = /\bunpaid\b/i;
 
+// "123 Anything, City, ST 79605" — a house number, then anything, then the
+// City, ST ZIP tail every US mailing address ends with.
+export const CITY_STATE_ZIP_RE = /^\s*\d+\s+.+,\s*[A-Za-z][A-Za-z .'-]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?\s*$/;
+
+export const STREET_SUFFIX_RE =
+  /\b(?:st|street|rd|road|ave|avenue|dr|drive|ln|lane|ct|court|blvd|boulevard|way|pl|place|cir|circle|loop|pkwy|parkway|trl|trail|ter|terrace|hwy|highway)\b\.?/i;
+
+// The header row of a secondary table ("Due Date | Payee | Description |
+// Unpaid"). It carries no transaction of its own and must not be swept into
+// the description of the row above it.
+const SECONDARY_HEADER_RE = /payee/i;
+
 /**
  * Extract property address from a detail page header.
  * Format is typically: "ADDRESS - Dulin - Full Address, City, State ZIP"
@@ -276,10 +303,25 @@ function extractPropertyAddress(rows, skipAddresses = new Set()) {
     }
   }
 
-  // Fallback: look for lines that look like addresses (contain numbers + street keywords)
+  // Fallback: a page header that reads like a US mailing address — house
+  // number, street, then "City, ST ZIP". This catches the headers the dash
+  // pattern misses, including ones with a single dash ("657 Ruidosa #106 -
+  // 5402 S 7th #106, Abilene, TX 79605") and street names the old keyword
+  // list didn't know ("Ruidosa", "Encino Road"). Half of Dianne's July
+  // statement imported with no property attached because of that list.
   for (let i = 0; i < Math.min(rows.length, 6); i++) {
     const text = rowToText(rows[i]);
-    if (/^\d+\s+\w/.test(text) && /(?:st|rd|ave|dr|ln|ct|blvd|way|pl|cir|loop|pkwy)/i.test(text)) {
+    if (CITY_STATE_ZIP_RE.test(text)) {
+      const shortAddr = text.split(/[-–,]/)[0].trim();
+      if (shouldSkip(shortAddr)) continue;
+      return { shortAddress: shortAddr, fullAddress: text };
+    }
+  }
+  // Last resort: the old street-suffix keyword sniff, widened to spelled-out
+  // suffixes.
+  for (let i = 0; i < Math.min(rows.length, 6); i++) {
+    const text = rowToText(rows[i]);
+    if (/^\d+\s+\w/.test(text) && STREET_SUFFIX_RE.test(text)) {
       const shortAddr = text.split(/[-–,]/)[0].trim();
       if (shouldSkip(shortAddr)) continue;
       return { shortAddress: shortAddr, fullAddress: text };
@@ -340,6 +382,9 @@ function parsePropertyPage(rows, skipAddresses = new Set()) {
   // True once we've passed into an "unpaid bills / payables" section. Rows
   // there are amounts owed, not cash that moved.
   let inUnpaidSection = false;
+  // Wrapped-cell fragments, held until we know where every transaction row on
+  // this page sits vertically.
+  const orphans = [];
 
   for (let i = 0; i < rows.length; i++) {
     const text = rowToText(rows[i]);
@@ -405,7 +450,6 @@ function parsePropertyPage(rows, skipAddresses = new Set()) {
     // Try to parse a transaction row
     // The row items have positional data — use them to separate columns
     const row = rows[i];
-    if (row.length < 3) continue;
 
     // Look for a date at the start
     const firstItem = row[0].text;
@@ -415,28 +459,28 @@ function parsePropertyPage(rows, skipAddresses = new Set()) {
     const isTransactionRow = date || /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(firstItem);
 
     if (!isTransactionRow) {
-      // Balance rows — skip.
-      if (hasMoneyAmount(text) &&
-          (textLower.includes('beginning cash') || textLower.includes('ending cash'))) {
+      // Balance rows — skip. The figure sometimes sits on its own line, so
+      // don't require one here.
+      if (textLower.includes('beginning cash') || textLower.includes('ending cash')) {
         continue;
       }
-      // Continuation line: no date at the start, no money amounts, still inside
-      // the transaction table, and there IS a preceding transaction on this page.
-      // The Absolute owner packet wraps long descriptions (e.g. "Management Fees
-      // for 03/2026") onto a second line — without this merge the type/category
-      // keywords live on an orphan row and get thrown away.
-      if (lastTxRowIdx >= 0 && text && !hasMoneyAmount(text) && transactions.length > 0) {
-        const prev = transactions[transactions.length - 1];
-        prev.description = prev.description
-          ? `${prev.description} ${text}`.trim()
-          : text;
-        // Also update the raw "type" field if the continuation text contains a
-        // known type keyword and we didn't catch one earlier.
-        if (!prev.type) {
-          for (const kt of KNOWN_TYPES) {
-            if (text.toLowerCase().includes(kt)) { prev.type = kt; break; }
-          }
-        }
+      // A wrapped cell. Owner packets break a long payee or description across
+      // two or three PDF lines, and those pieces can land either side of the
+      // line carrying the date — Barnett & Hill prints the payee above and the
+      // type below. Assuming the piece belongs to the transaction *above* it
+      // (what this code used to do) both loses the text its own row needed and
+      // corrupts its neighbour's. Park it and decide by vertical position once
+      // every transaction row on the page is known.
+      // Fragments containing a figure count too — "Late Fee of $10.00 per day:
+      // 06/06/2026 -" is a wrapped description, not a transaction. The rows
+      // that genuinely carry money have already been handled above: a real
+      // transaction starts with a date, and balance/total lines returned
+      // earlier.
+      // A fragment with no letters is a stray figure — the balance that spilled
+      // onto its own line, a year, a reference. There's no way to tell which
+      // row it belongs to and nothing to gain from guessing, so drop it.
+      if (text && /[a-z]/i.test(text) && !SECONDARY_HEADER_RE.test(text)) {
+        orphans.push({ text, y: row[0].y });
       }
       continue;
     }
@@ -492,14 +536,7 @@ function parsePropertyPage(rows, skipAddresses = new Set()) {
     }
 
     // If no type detected from parts, try from the full text
-    if (!type) {
-      for (const t of knownTypes) {
-        if (textLower.includes(t)) {
-          type = t;
-          break;
-        }
-      }
-    }
+    if (!type) type = detectType(textLower);
 
     // Determine cash in / cash out from amounts + their x-positions
     // The PDF columns are ordered: ... | Cash In | Cash Out | Balance
@@ -520,7 +557,14 @@ function parsePropertyPage(rows, skipAddresses = new Set()) {
     // Preferred path: the header told us where each money column sits, so read
     // the columns instead of guessing from keywords. An amount belongs to the
     // column whose right edge it lines up with.
-    const placed = assignAmountColumns(sortedAmounts, columns);
+    // A "Bills Due" table has its own single money column ("Unpaid"), which
+    // lines up with none of the transaction table's. Take the figure at face
+    // value — the bill's amount — rather than filing it as a balance and
+    // ending up with a $0 row.
+    const unpaidRow = inUnpaidSection || UNPAID_ROW_RE.test(text);
+    const placed = unpaidRow
+      ? { cashIn: 0, cashOut: Math.abs(sortedAmounts[sortedAmounts.length - 1].value), balance: 0 }
+      : assignAmountColumns(sortedAmounts, columns);
     const columnsTrusted = placed !== null;
     if (placed) {
       cashIn = placed.cashIn;
@@ -588,16 +632,61 @@ function parsePropertyPage(rows, skipAddresses = new Set()) {
       cashOut: Math.abs(cashOut),
       balance,
       columnsTrusted,
-      unpaid: inUnpaidSection || UNPAID_ROW_RE.test(text),
+      unpaid: unpaidRow,
+      y: row[0].y,
     });
     lastTxRowIdx = i;
   }
+
+  attachOrphanText(transactions, orphans);
 
   return {
     propertyAddress: address,
     cashSummary,
     transactions,
   };
+}
+
+/**
+ * Give each wrapped-cell fragment to the transaction row it sits closest to.
+ *
+ * A wrapped cell hugs its own row — the fragment is a few points from the line
+ * carrying the date, and roughly three times that from the neighbouring
+ * transaction. Nearest-row wins, which handles fragments above the date line
+ * (Barnett & Hill's payee) and below it (their type column) without needing to
+ * know which layout we're looking at.
+ *
+ * Fragments that aren't close to any transaction are dropped rather than
+ * guessed at — a stray heading appended to a real row changes its category.
+ */
+export function attachOrphanText(transactions, orphans, maxDistance = 25) {
+  if (!transactions.length || !orphans?.length) return transactions;
+  const extra = new Map();
+  for (const orphan of orphans) {
+    let best = null;
+    let bestDist = Infinity;
+    for (const tx of transactions) {
+      const d = Math.abs(orphan.y - tx.y);
+      if (d < bestDist) { best = tx; bestDist = d; }
+    }
+    if (!best || bestDist > maxDistance) continue;
+    const list = extra.get(best) || [];
+    list.push(orphan);
+    extra.set(best, list);
+  }
+  for (const [tx, list] of extra) {
+    // Top-to-bottom, so the reassembled description reads in document order.
+    // pdf.js y grows upward, so descending y is downward on the page.
+    list.sort((a, b) => b.y - a.y);
+    const above = list.filter(o => o.y > tx.y).map(o => o.text);
+    const below = list.filter(o => o.y <= tx.y).map(o => o.text);
+    tx.description = [...above, tx.description, ...below]
+      .filter(t => t && t !== 'Unknown')
+      .join(' ')
+      .trim();
+    if (!tx.type) tx.type = detectType(tx.description) || '';
+  }
+  return transactions;
 }
 
 /**
@@ -707,7 +796,15 @@ export async function parseOwnerPacket(pdfData) {
   const allTransactions = [];
   properties.forEach(prop => {
     prop.transactions.forEach(tx => {
-      const category = categorizeTransaction(tx);
+      let category = categorizeTransaction(tx);
+      // An NSF reversal reads as "Rent Income - NSF reversal receipt" and lands
+      // in Cash Out — money leaving because a tenant payment bounced. Leaving
+      // it categorised as rent would make the validation screen offer to
+      // "migrate" it into a rent payment, flipping money that actually went
+      // out. Keep it an expense; the description still says what happened.
+      if (INCOME_CATEGORIES.has(category) && tx.columnsTrusted && tx.cashOut > 0 && tx.cashIn === 0) {
+        category = 'other';
+      }
       const isDistribution = category === 'owner-distribution';
       const looksLikeIncome = INCOME_CATEGORIES.has(category);
       // When we read the real column positions off the table header, the PDF
