@@ -684,7 +684,10 @@ export default function DocumentImport({
 
         mapped = result.allTransactions.map((tx, idx) => {
           const matched = matchProperty(tx.propertyAddress || tx.propertyFullAddress, properties);
-          const isIncome = tx.flowType === 'income' || (tx.cashIn > 0 && !tx.isDistribution);
+          // Trust the parser's classification outright. The old `|| tx.cashIn > 0`
+          // fallback double-guessed it and could flip a row the parser had
+          // already read correctly off the statement's own columns.
+          const isIncome = tx.flowType === 'income';
           const entry = {
             id: `upload-${Date.now()}-${idx}`,
             description: tx.description || tx.payee || tx.type || 'Unknown',
@@ -698,7 +701,17 @@ export default function DocumentImport({
             propertyHint: tx.propertyAddress || '',
             sourceDocument: sourceLabel,
             flowType: isIncome ? 'income' : 'expense',
-            incomeCategory: isIncome ? 'rent' : undefined,
+            // Keep what the statement actually said — prepaid rent, a late fee
+            // and a deposit are not all "rent", and flattening them here was
+            // losing that distinction on every owner-packet import.
+            incomeCategory: isIncome
+              ? (['prepaid-rent', 'late-fee', 'deposit', 'owner-distribution', 'refund', 'other'].includes(tx.category)
+                  ? tx.category
+                  : 'rent')
+              : undefined,
+            // A bill the owner statement lists as still owed. Shown for review
+            // but not imported — no cash has moved.
+            isUnpaid: tx.isUnpaid === true,
             imported: false,
           };
           // Default selected unless this row is an exact fingerprint duplicate of
@@ -709,7 +722,7 @@ export default function DocumentImport({
           const isDuplicate = existingFingerprints.has(fp);
           entry.fingerprint = fp;
           entry.isDuplicate = isDuplicate;
-          entry.selected = !isDuplicate;
+          entry.selected = !isDuplicate && !entry.isUnpaid;
           return entry;
         });
       } else {
@@ -1388,6 +1401,12 @@ export default function DocumentImport({
                           {/* Payee, when known. FFB doesn't print one for ordinary checks. */}
                           {(entry.payee || entry.vendor) && (
                             <span className="ml-1.5 text-[10px] text-white/45">→ {entry.payee || entry.vendor}</span>
+                          )}
+                          {entry.isUnpaid && (
+                            <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300"
+                              title="The owner statement lists this bill as still owed. No cash has moved, so it isn't imported unless you tick it.">
+                              still owed — not imported
+                            </span>
                           )}
                           {(entry.tenantName || entry.account) && (
                             <span className="block text-[10px] text-white/30">

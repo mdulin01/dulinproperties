@@ -167,6 +167,88 @@ const KNOWN_TYPES = [
 ];
 
 /**
+ * Read the x-anchors of the money columns out of the transaction-table header
+ * row ("… | Cash In | Cash Out | Balance").
+ *
+ * This matters more than it looks. Without anchors the parser has to *guess*
+ * which column an amount sits in from its type keyword and the gap between
+ * amounts, and it guesses wrong on layouts it hasn't seen — a $1,000 rent
+ * receipt lands in Cash Out and shows up as an expense. The header row tells
+ * us the answer outright, so read it.
+ *
+ * Returns { cashIn, cashOut, balance } as right-edge x positions (accounting
+ * tables right-align both the header and the figures under it), or null when
+ * the header can't be found.
+ */
+export function detectAmountColumns(row) {
+  // Header words arrive as separate text items — "Cash" then "In". Merge items
+  // that are touching so the phrase is matchable.
+  const merged = [];
+  for (const item of row) {
+    const right = item.x + (item.width || item.text.length * 5);
+    const last = merged[merged.length - 1];
+    if (last && item.x - last.right <= 6) {
+      last.text = `${last.text} ${item.text}`;
+      last.right = right;
+    } else {
+      merged.push({ text: item.text, left: item.x, right });
+    }
+  }
+  const find = (re) => merged.find(m => re.test(m.text.toLowerCase().replace(/\s+/g, ' ').trim()));
+  const cashIn = find(/^cash ?in$/);
+  const cashOut = find(/^cash ?out$/);
+  const balance = find(/^balance$/);
+  if (!cashIn || !cashOut) return null;
+  return { cashIn: cashIn.right, cashOut: cashOut.right, balance: balance ? balance.right : null };
+}
+
+// Section headings that introduce bills the owner has NOT paid yet — money
+// that is owed, not money that moved. Dianne's July statement listed a $58.07
+// management fee as due, and the app booked it as paid.
+// Anchored at the start of the line on purpose: a loose match would catch
+// ordinary descriptions ("past due notice", "open work order") and silently
+// stop importing real expenses.
+export const UNPAID_SECTION_RE =
+  /^\s*(?:(?:unpaid|outstanding|open|pending)\s+(?:bills?|invoices?|charges?|payables?)|bills?\s+(?:due|payable|outstanding|unpaid)|accounts?\s+payable|payables?)\b/i;
+
+/**
+ * Place each money figure on a transaction row into its column, using the
+ * header anchors from detectAmountColumns. Accounting tables right-align both
+ * the header and the figures, so a figure belongs to the anchor its right edge
+ * lines up with.
+ *
+ * Returns null when nothing lines up — that means we're looking at a layout we
+ * don't actually understand, and the caller should fall back rather than
+ * invent a column.
+ */
+export function assignAmountColumns(amounts, columns, tolerance = 40) {
+  if (!columns || !amounts?.length) return null;
+  const anchors = [
+    { key: 'cashIn', x: columns.cashIn },
+    { key: 'cashOut', x: columns.cashOut },
+    ...(columns.balance != null ? [{ key: 'balance', x: columns.balance }] : []),
+  ];
+  const placed = { cashIn: 0, cashOut: 0, balance: 0 };
+  for (const amt of amounts) {
+    const right = amt.x + (amt.width || String(amt.text || '').length * 5);
+    let best = anchors[0];
+    let bestDist = Math.abs(right - anchors[0].x);
+    for (const a of anchors.slice(1)) {
+      const d = Math.abs(right - a.x);
+      if (d < bestDist) { best = a; bestDist = d; }
+    }
+    if (bestDist > tolerance) return null;
+    placed[best.key] = amt.value;
+  }
+  return placed;
+}
+
+// A row-level status word. Deliberately narrow — "due" alone appears in plenty
+// of innocent descriptions ("due date", "past due notice sent"), so only the
+// explicit word "unpaid" counts here.
+const UNPAID_ROW_RE = /\bunpaid\b/i;
+
+/**
  * Extract property address from a detail page header.
  * Format is typically: "ADDRESS - Dulin - Full Address, City, State ZIP"
  * or just the address on a line by itself.
@@ -252,6 +334,12 @@ function parsePropertyPage(rows, skipAddresses = new Set()) {
   // we can append continuation rows (long descriptions that wrap onto the next
   // PDF line) to that transaction's description.
   let lastTxRowIdx = -1;
+  // Right-edge x of the Cash In / Cash Out / Balance columns, read from the
+  // table header. Null until we find a header we understand.
+  let columns = null;
+  // True once we've passed into an "unpaid bills / payables" section. Rows
+  // there are amounts owed, not cash that moved.
+  let inUnpaidSection = false;
 
   for (let i = 0; i < rows.length; i++) {
     const text = rowToText(rows[i]);
@@ -294,6 +382,18 @@ function parsePropertyPage(rows, skipAddresses = new Set()) {
     if (textLower.includes('payee') && textLower.includes('type') ||
         textLower.includes('payee/payer')) {
       inTransactionTable = true;
+      // A fresh table header ends any unpaid-bills section above it and gives
+      // us this table's column positions.
+      inUnpaidSection = false;
+      columns = detectAmountColumns(rows[i]) || columns;
+      continue;
+    }
+
+    // A heading like "Unpaid Bills" or "Payables Due" starts a section of money
+    // that is owed rather than paid. Everything under it stays flagged until
+    // the next real transaction-table header.
+    if (!hasMoneyAmount(text) && UNPAID_SECTION_RE.test(text)) {
+      inUnpaidSection = true;
       continue;
     }
 
@@ -417,7 +517,20 @@ function parsePropertyPage(rows, skipAddresses = new Set()) {
         typeLower.includes('deposit') || typeLower.includes('late fee') ||
         typeLower.includes('credit') || typeLower.includes('prepaid');
 
-    if (sortedAmounts.length >= 3) {
+    // Preferred path: the header told us where each money column sits, so read
+    // the columns instead of guessing from keywords. An amount belongs to the
+    // column whose right edge it lines up with.
+    const placed = assignAmountColumns(sortedAmounts, columns);
+    const columnsTrusted = placed !== null;
+    if (placed) {
+      cashIn = placed.cashIn;
+      cashOut = placed.cashOut;
+      balance = placed.balance;
+    }
+
+    if (columnsTrusted) {
+      // nothing more to do — the columns are authoritative
+    } else if (sortedAmounts.length >= 3) {
       // Three amounts present: Cash In, Cash Out, Balance
       cashIn = sortedAmounts[0].value;
       cashOut = sortedAmounts[1].value;
@@ -474,6 +587,8 @@ function parsePropertyPage(rows, skipAddresses = new Set()) {
       cashIn: Math.abs(cashIn),
       cashOut: Math.abs(cashOut),
       balance,
+      columnsTrusted,
+      unpaid: inUnpaidSection || UNPAID_ROW_RE.test(text),
     });
     lastTxRowIdx = i;
   }
@@ -595,9 +710,20 @@ export async function parseOwnerPacket(pdfData) {
       const category = categorizeTransaction(tx);
       const isDistribution = category === 'owner-distribution';
       const looksLikeIncome = INCOME_CATEGORIES.has(category);
-      // Trust the category; only fall back to column heuristic if category is ambiguous.
-      const isIncome = !isDistribution && (looksLikeIncome || (tx.cashIn > 0 && tx.cashOut === 0));
+      // When we read the real column positions off the table header, the PDF
+      // itself says which side the money is on — believe it. The category
+      // guesswork below is only the fallback for layouts whose header we
+      // couldn't read.
+      const isIncome = !isDistribution && (
+        tx.columnsTrusted
+          ? tx.cashIn > 0
+          : (looksLikeIncome || (tx.cashIn > 0 && tx.cashOut === 0))
+      );
       const isExpense = !isDistribution && !isIncome;
+      // A bill that is still owed is not an expense yet — no cash has moved,
+      // it won't be on the bank statement, and on a cash-basis Schedule E it
+      // isn't deductible until it's paid.
+      const isUnpaid = tx.unpaid === true;
       // Use whichever column has the value (parser may have put it in either one).
       const amount = Math.max(tx.cashIn || 0, tx.cashOut || 0);
 
@@ -609,6 +735,7 @@ export async function parseOwnerPacket(pdfData) {
         isIncome,
         isExpense,
         isDistribution,
+        isUnpaid,
         amount,
         flowType: isDistribution ? 'distribution' : (isIncome ? 'income' : 'expense'),
       });
@@ -622,9 +749,10 @@ export async function parseOwnerPacket(pdfData) {
     summary: {
       totalProperties: properties.length,
       totalTransactions: allTransactions.length,
-      totalIncome: allTransactions.filter(t => t.isIncome).reduce((s, t) => s + t.cashIn, 0),
-      totalExpenses: allTransactions.filter(t => t.isExpense && !t.isDistribution).reduce((s, t) => s + t.cashOut, 0),
+      totalIncome: allTransactions.filter(t => t.isIncome && !t.isUnpaid).reduce((s, t) => s + t.cashIn, 0),
+      totalExpenses: allTransactions.filter(t => t.isExpense && !t.isDistribution && !t.isUnpaid).reduce((s, t) => s + t.cashOut, 0),
       totalDistributions: allTransactions.filter(t => t.isDistribution).reduce((s, t) => s + t.cashOut, 0),
+      unpaidCount: allTransactions.filter(t => t.isUnpaid).length,
     },
   };
 }

@@ -458,6 +458,66 @@ export default function ValidateTransactions({
     }
   };
 
+  /**
+   * Move one entry to the other side of the books — an expense that was really
+   * money coming in, or the reverse. Statement parsers guess the direction from
+   * column position and sometimes get it wrong; without this the only remedy is
+   * deleting the row and re-importing the whole statement.
+   *
+   * Adds the corrected row first, deletes the original second, so a failure
+   * leaves the entry where it was rather than losing it.
+   */
+  const flipDirection = async (row) => {
+    if (row.splitParent || row.splitChildOf) {
+      showToast?.('Un-split this entry first — flipping a split part would unbalance the group.', 'info');
+      return;
+    }
+    const raw = row.raw || {};
+    const date = row.date || '';
+    const common = {
+      propertyId: raw.propertyId || '',
+      propertyName: raw.propertyName || '',
+      amount: Math.abs(parseFloat(row.amount) || 0),
+      sourceDocument: raw.sourceDocument || '',
+      bankAccount: raw.bankAccount || '',
+      notes: raw.notes || '',
+      validated: true,
+    };
+    try {
+      if (row.kind === 'expense') {
+        const category = INCOME_CATEGORIES.has(raw.category) ? raw.category : 'rent';
+        const res = await bulkAddRentPayments([{
+          ...common,
+          category,
+          tenantName: raw.vendor || raw.payee || '',
+          payee: raw.payee || '',
+          month: date.slice(0, 7),
+          datePaid: date,
+          status: 'paid',
+        }]);
+        if (!res?.ok) throw new Error(res?.error || 'could not create the income entry');
+        await deleteExpense(row.id);
+        showToast?.('Moved to income.', 'success');
+      } else {
+        const category = INCOME_CATEGORIES.has(raw.category) ? 'other' : (raw.category || 'other');
+        const res = await bulkAddExpenses([{
+          ...common,
+          category,
+          description: row.description || raw.category || 'Expense',
+          vendor: raw.tenantName || raw.payee || raw.vendor || '',
+          payee: raw.payee || '',
+          date,
+        }]);
+        if (!res?.ok) throw new Error(res?.error || 'could not create the expense entry');
+        await deleteRentPayment(row.id);
+        showToast?.('Moved to expenses.', 'success');
+      }
+    } catch (err) {
+      console.error('[flip-direction] failed:', err);
+      showToast?.(`Could not move that entry: ${err.message || 'unknown error'}. It was left where it was.`, 'error');
+    }
+  };
+
   // A plain check row: the bank gave us a number and nothing else. Worth
   // prompting for a name; a Vexus or Lowe's line already tells us who it was.
   const isNamelessCheck = (row) =>
@@ -640,6 +700,18 @@ export default function ValidateTransactions({
               >
                 <Scissors className="w-3.5 h-3.5" />
                 {row.splitParent ? 'Split ✓' : 'Split'}
+              </button>
+            )}
+            {!isChild && !row.splitParent && bulkAddExpenses && bulkAddRentPayments && (
+              <button
+                onClick={() => flipDirection(row)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-300 hover:bg-amber-500/25 text-xs font-medium transition"
+                title={isIncome
+                  ? 'This is really money going out — move it to expenses'
+                  : 'This is really money coming in — move it to income'}
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+                {isIncome ? 'To expense' : 'To income'}
               </button>
             )}
             <button
