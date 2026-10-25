@@ -42,7 +42,7 @@ function propertyRows(properties, data, now) {
     const daysPast = daysBetween(`${month}-${String(dueDay).padStart(2, '0')}`, today);
     const settled = applied.some(r => r.status === 'paid') || credited >= due - 0.005;
     const status = vacant ? 'vacant' : due === null || !tracked ? null : settled ? 'paid'
-      : daysPast > graceDays ? 'late' : 'partial';
+      : daysPast > graceDays ? 'late' : credited > 0 ? 'partial' : 'unpaid';
     return {
       name: propertyName(p), tenant: vacant ? null : firstName(tenants[0]),
       rentDue: due, rentReceivedThisMonth: received, status,

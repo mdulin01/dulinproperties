@@ -46,10 +46,10 @@ Adding this endpoint does not configure or run the Monday scheduled task.
   rent month. Prepaid rent can therefore be `paid` with zero cash received this month.
   Future-dated receipts are excluded.
 - Status uses current **rent-month** credits: `paid` when settled (including an
-  explicitly paid ledger row), `late` for any balance after grace, and `partial`
-  for any remaining balance before grace ends. The specified four-status contract
-  has no `unpaid` state, so **`partial` includes zero paid, including before the due
-  date**. `vacant` covers vacant, listed, renovating, and future/former households.
+  explicitly paid ledger row), `late` for any balance after grace, `partial` when
+  some rent has been paid but a balance remains before grace ends, and `unpaid`
+  when nothing has been paid before the due date or through the grace period.
+  `vacant` covers vacant, listed, renovating, and future/former households.
   Missing rent tracking uses `null` where the obligation/status is unknown.
 - `daysLate` is calendar days since the contractual due date, but only once grace
   has ended; otherwise zero (`null` for unknown Dulin rent status).
