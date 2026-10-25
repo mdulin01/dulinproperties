@@ -1,4 +1,7 @@
 {
+  "git": {
+    "deploymentEnabled": { "codex/digest-endpoint": false }
+  },
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
