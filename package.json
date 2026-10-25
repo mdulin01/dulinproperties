@@ -6,15 +6,18 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:backup": "node --test tests/weekly-backup.test.js",
+    "test:backup:emulator": "firebase emulators:exec --only firestore --project demo-dulin-backup --config tests/firebase-backup.json \"node --test tests/weekly-backup.emulator.test.js\""
   },
   "dependencies": {
     "firebase": "^10.7.0",
+    "firebase-admin": "14.5.0",
     "heic2any": "^0.0.4",
     "lucide-react": "^0.294.0",
+    "pdfjs-dist": "^4.0.379",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "pdfjs-dist": "^4.0.379",
     "react-router-dom": "^7.13.0"
   },
   "devDependencies": {

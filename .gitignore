@@ -12,3 +12,5 @@ reports/
 dist-new
 dist2
 dist3
+*-debug.log
+.firebase/

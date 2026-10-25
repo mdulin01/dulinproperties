@@ -1,5 +1,7 @@
 # Dulin Properties
 
+Mike's cross-project notes are in his vault at `~/Dropbox (Personal)/Vault`. When asked about priorities, status across projects, or what Mike decided, read `01-Week/` (newest note) and this project's `NOW.md` there (`10-Folio/` for mikeshealth, `40-Rentals/` for rainbow-rentals and dulinproperties, `20-FCBOH/` for engagement-workspace, `50-Finances/` for mikes-money). Never copy anything from `05-Health/` into this repo, an issue, or a PR.
+
 ## Overview
 
 Rental property management app for tracking properties, tenants, finances, documents, and expenses. Includes a shared hub for tasks and collaboration.
