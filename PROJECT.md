@@ -37,6 +37,11 @@ src/components/
   Tenants/     - Tenant management components
 ```
 
+## Operations
+
+- Read-only Monday digest: `GET /api/digest`, protected by server-side `DIGEST_SECRET`; setup, response semantics and checks in [docs/digest-endpoint.md](docs/digest-endpoint.md).
+- Weekly Firestore backup: [docs/weekly-backup.md](docs/weekly-backup.md).
+
 ## Remaining Work
 
 ### High Priority
